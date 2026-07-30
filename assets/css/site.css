@@ -291,56 +291,61 @@ body:not(.home-page){
 @media(max-width:760px){.designer-control-tabs{position:sticky;top:0;z-index:4}.designer-accordion{height:calc(100% - 101px)}}
 
 
-/* Design-control pill toggles */
+/* Compact switch toggles used throughout Design Controls */
 .pool-designer-page .control-pill-toggle {
   width: 100%;
-  min-height: 38px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 30px;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  border: 1px solid #cfcdc8;
-  border-radius: 999px;
-  background: rgba(255,255,255,.72);
-  color: #272727;
-  padding: 7px 8px 7px 13px;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #2b2927;
+  padding: 2px 0;
   font: inherit;
   cursor: pointer;
   text-align: left;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
 }
 .pool-designer-page .control-pill-toggle span {
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  font-weight: 400;
+  letter-spacing: .02em;
+  text-transform: none;
 }
-.pool-designer-page .control-pill-toggle small {
-  font-size: 9px;
-  color: #76716c;
-}
+.pool-designer-page .control-pill-toggle small { display:none; }
 .pool-designer-page .control-pill-toggle b {
-  min-width: 38px;
+  position: relative;
+  flex: 0 0 auto;
+  width: 31px;
+  height: 18px;
   border-radius: 999px;
-  background: #e6e4df;
-  padding: 5px 8px;
-  color: #68635e;
-  font-size: 9px;
-  font-weight: 600;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: .05em;
+  background: #d8dadc;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+  font-size: 0;
+  transition: background-color 160ms ease;
 }
-.pool-designer-page .control-pill-toggle:hover {
-  border-color: #315f76;
+.pool-designer-page .control-pill-toggle b::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.2);
+  transition: transform 160ms ease;
 }
-.pool-designer-page .control-pill-toggle.is-active,
-.pool-designer-page .control-pill-toggle[aria-pressed="true"] {
-  border-color: #315f76;
-  background: #edf3f5;
-}
+.pool-designer-page .control-pill-toggle:hover b { background:#cfd2d4; }
+.pool-designer-page .control-pill-toggle:focus-visible { outline:2px solid #315f76; outline-offset:3px; }
 .pool-designer-page .control-pill-toggle.is-active b,
-.pool-designer-page .control-pill-toggle[aria-pressed="true"] b {
-  background: #315f76;
-  color: #fff;
-}
+.pool-designer-page .control-pill-toggle[aria-pressed="true"] b { background:#1d5f7a; }
+.pool-designer-page .control-pill-toggle.is-active b::after,
+.pool-designer-page .control-pill-toggle[aria-pressed="true"] b::after { transform:translateX(13px); }
+
+.pool-designer-page .tile-swatch-grid { grid-template-columns:1fr 1fr; max-height:360px; overflow:auto; padding-right:2px; }
+.pool-designer-page .tile-swatch-grid button { min-height:40px; }
+.pool-designer-page .tile-swatch-grid button.is-selected { border-color:#315f76; background:#edf3f5; box-shadow:inset 0 0 0 1px #315f76; }
+

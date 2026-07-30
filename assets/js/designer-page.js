@@ -29,15 +29,32 @@
   }
 
   document.querySelectorAll('[data-group]').forEach(input => {
+    const group = input.dataset.group;
+
+    input.addEventListener('pointerdown', () => {
+      if (group === 'poolDimensions') sendDesignerCommand('BEGIN_POOL_DIMENSION_PREVIEW');
+    });
+
     input.addEventListener('input', () => {
       const map = { length:'length', width:'width', shallowDepth:'shallowDepth', deepDepth:'deepDepth', count:'stepCount', depth:'stepDepth', spaWidth:'spaWidth', spaLength:'spaLength', height:'spaHeight' };
       setOutput(map[input.dataset.key] || input.dataset.key, input.value);
+
+      // Pool dimensions use the designer's existing live-preview pipeline while
+      // the range thumb is moving. The accurate geometry rebuild happens on
+      // release/change, matching direct wall-handle dragging in the model.
+      if (group === 'poolDimensions') {
+        sendDesignerCommand('PREVIEW_POOL_DIMENSIONS', numericPayload(group));
+      }
     });
+
     input.addEventListener('change', () => {
-      const group = input.dataset.group;
       if (group === 'poolDimensions') sendDesignerCommand('SET_POOL_DIMENSIONS', numericPayload(group));
       if (group === 'spa') sendDesignerCommand('UPDATE_SPA', numericPayload(group));
       if (group === 'steps') sendDesignerCommand('UPDATE_STEPS', numericPayload(group));
+    });
+
+    input.addEventListener('pointercancel', () => {
+      if (group === 'poolDimensions') sendDesignerCommand('SET_POOL_DIMENSIONS', numericPayload(group));
     });
   });
 
@@ -46,7 +63,8 @@
     button.setAttribute('aria-pressed', String(!!active));
     button.classList.toggle('is-active', !!active);
     const stateLabel = button.querySelector('[data-toggle-state]');
-    if (stateLabel) stateLabel.textContent = active ? 'On' : 'Off';
+    if (stateLabel) stateLabel.textContent = '';
+    button.setAttribute('aria-label', `${button.querySelector('span')?.textContent || 'Option'}: ${active ? 'On' : 'Off'}`);
   }
 
   document.querySelectorAll('[data-command]').forEach(el => {
@@ -147,6 +165,10 @@
     setPillState(raisedToggle, !!p.raised);
     const spaToggle = document.querySelector('[data-command="UPDATE_SPA"][data-key="enabled"]');
     setPillState(spaToggle, !!s.enabled);
+    const selectedTile = String(p.tileColor || next.tileColor || next.interiorTile || '').toLowerCase();
+    document.querySelectorAll('[data-command="SET_INTERIOR_TILE"][data-value]').forEach(button => {
+      button.classList.toggle('is-selected', String(button.dataset.value || '').toLowerCase() === selectedTile);
+    });
     const values = { length:p.length, width:p.width, shallowDepth:p.shallow, deepDepth:p.deep, spaWidth:s.width, spaLength:s.length, spaHeight:s.height, stepCount:p.stepCount, stepDepth:p.stepDepth, stepWidth:p.stepWidth };
     Object.entries(values).forEach(([key,value]) => {
       if (value == null) return;

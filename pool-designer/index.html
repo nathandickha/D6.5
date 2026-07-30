@@ -42,7 +42,7 @@
       <div class="designer-tab-panel is-active" id="poolSpaControls" role="tabpanel" aria-labelledby="poolSpaTab" data-control-panel="pool-spa">
       <details id="poolControlsSection" open><summary>Pool</summary><div class="control-content">
         <label>Pool shape<select data-command="SET_POOL_SHAPE" data-key="shape"><option value="rectangular">Rectangle</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="L">L-shape</option><option value="freeform">Freeform</option></select></label>
-        <button type="button" class="control-pill-toggle raised-pool-control" data-command="SET_POOL_RAISED" data-key="raised" data-toggle-pill aria-pressed="false"><span>Raised pool</span><small>0.7 m</small><b data-toggle-state>Off</b></button>
+        <button type="button" class="control-pill-toggle raised-pool-control" data-command="SET_POOL_RAISED" data-key="raised" data-toggle-pill aria-pressed="false"><span>Raised pool</span><b data-toggle-state aria-hidden="true"></b></button>
         <label>Length <output data-output="length">8.0 m</output><input type="range" min="3" max="15" step="0.1" value="8" data-group="poolDimensions" data-key="length"></label>
         <label>Width <output data-output="width">4.0 m</output><input type="range" min="2" max="8" step="0.1" value="4" data-group="poolDimensions" data-key="width"></label>
         <label>Shallow depth <output data-output="shallowDepth">1.2 m</output><input type="range" min="0.8" max="2" step="0.05" value="1.2" data-group="poolDimensions" data-key="shallowDepth"></label>
@@ -51,7 +51,7 @@
       </div></details>
 
       <details id="spaControlsSection"><summary>Spa</summary><div class="control-content">
-        <button type="button" class="control-pill-toggle" data-command="UPDATE_SPA" data-key="enabled" data-toggle-pill aria-pressed="false"><span>Spa enabled</span><b data-toggle-state>Off</b></button>
+        <button type="button" class="control-pill-toggle" data-command="UPDATE_SPA" data-key="enabled" data-toggle-pill aria-pressed="false"><span>Spa enabled</span><b data-toggle-state aria-hidden="true"></b></button>
         <label>Spa shape<select data-command="UPDATE_SPA" data-key="shape"><option value="square">Rectangular</option><option value="circular">Circular</option></select></label>
         <label>Width / diameter <output data-output="spaWidth">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="width"></label>
         <label>Length <output data-output="spaLength">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="length"></label>
@@ -75,11 +75,26 @@
         <p class="control-note">Bench seating is integrated with the current step system. Select a step in the model for advanced push/pull editing.</p>
       </div></details>
 
-      <details id="interiorFinishControlsSection"><summary>Interior Finish</summary><div class="control-content"><div class="swatch-grid">
-        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Blue"><i style="background:#4b849a"></i>Blue</button>
-        <button type="button" data-command="SET_INTERIOR_TILE" data-value="White"><i style="background:#e8e8e4"></i>White</button>
-        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Black"><i style="background:#242626"></i>Black</button>
-        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Antique Opal"><i style="background:#b8ac96"></i>Antique Opal</button>
+      <details id="interiorFinishControlsSection"><summary>Interior Finish</summary><div class="control-content"><div class="swatch-grid tile-swatch-grid">
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="blue"><i style="background:linear-gradient(135deg,#1497c2,#0a80ae)"></i>Blue</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="white"><i style="background:linear-gradient(135deg,#f6f7f2,#dde3dc)"></i>White</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Antique Opal"><i style="background:linear-gradient(135deg,#6b9a98,#355f63)"></i>Antique Opal</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Aqua Glass"><i style="background:linear-gradient(135deg,#55c2d3,#249aaa)"></i>Aqua Glass</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Arctic Blue"><i style="background:linear-gradient(135deg,#c8edf3,#83ccd8)"></i>Arctic Blue</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Cobalt Blue"><i style="background:linear-gradient(135deg,#125e9f,#0a4380)"></i>Cobalt Blue</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Deep Ocean"><i style="background:linear-gradient(135deg,#06445f,#032a3c)"></i>Deep Ocean</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Lagoon"><i style="background:linear-gradient(135deg,#15a7b0,#087d88)"></i>Lagoon</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Turquoise"><i style="background:linear-gradient(135deg,#21b7a8,#0b8b83)"></i>Turquoise</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Emerald"><i style="background:linear-gradient(135deg,#0b8c6e,#04634f)"></i>Emerald</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Seafoam"><i style="background:linear-gradient(135deg,#a9d8ce,#6bb6a9)"></i>Seafoam</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Pearl"><i style="background:linear-gradient(135deg,#f0eee4,#d6d2c4)"></i>Pearl</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Silver Grey"><i style="background:linear-gradient(135deg,#bfc6c8,#8f9a9d)"></i>Silver Grey</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Graphite"><i style="background:linear-gradient(135deg,#3b4448,#1e2528)"></i>Graphite</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Midnight"><i style="background:linear-gradient(135deg,#061b2f,#020a14)"></i>Midnight</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Sandstone"><i style="background:linear-gradient(135deg,#d1b98f,#ac8f62)"></i>Sandstone</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Travertine"><i style="background:linear-gradient(135deg,#cdb48d,#a98f68)"></i>Travertine</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Jade"><i style="background:linear-gradient(135deg,#4fa98d,#2f8069)"></i>Jade</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Opal Blue"><i style="background:linear-gradient(135deg,#8dc9d6,#559eaf)"></i>Opal Blue</button>
       </div></div></details>
 
       </div>
@@ -112,6 +127,6 @@
 </div><div class="footer-bottom"><span>© 2026 Atelier 3D. All rights reserved.</span><span><a href="../privacy-policy/index.html">Privacy</a>&nbsp;&nbsp;&nbsp; <a href="../terms-and-conditions/index.html">Terms</a>&nbsp;&nbsp;&nbsp; <a href="../about/index.html">About</a></span></div></div></footer>
 
 <script src="../assets/js/site.js"></script>
-<script src="../assets/js/designer-page.js?v=20260730-3"></script>
+<script src="../assets/js/designer-page.js?v=20260730-live-dimensions"></script>
 </body>
 </html>
