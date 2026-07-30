@@ -28,13 +28,18 @@ function snapshot() {
 function changed() { post('DESIGN_STATE_CHANGED', snapshot()); }
 async function apply(type, payload={}) {
   if (!app) throw new Error('Designer is not ready');
-  post('LOADING_STARTED', { type });
+  const isPreview = type === 'PREVIEW_POOL_DIMENSIONS' || type === 'PREVIEW_SPA' || type === 'PREVIEW_POOL_HEIGHT';
+  if (!isPreview) post('LOADING_STARTED', { type });
   switch(type) {
     case 'REQUEST_DESIGN_STATE': changed(); break;
     case 'SET_RENDER_PAUSED': app._renderPaused = !!payload.paused; break;
     case 'SET_STARTER_POOL': { const preset = starterPresets.find(x => x.id === payload.id); if (preset) await app.applyStarterPreset(preset); break; }
     case 'SET_POOL_SHAPE': input('shape', payload.shape); break;
     case 'SET_POOL_RAISED': await app.setPoolRaised?.(!!payload.raised); break;
+    case 'PREVIEW_POOL_HEIGHT':
+    case 'SET_POOL_HEIGHT':
+      if (payload.height != null) await app.setPoolElevationHeight?.(Number(payload.height), { captureUndo: type === 'SET_POOL_HEIGHT' });
+      break;
     case 'BEGIN_POOL_DIMENSION_PREVIEW':
       if (!app._live?.dragging) {
         if (!app._live.baseParams) app._live.baseParams = { ...(app.poolGroup?.userData?.poolParams || app.poolParams) };
@@ -59,6 +64,7 @@ async function apply(type, payload={}) {
       await app._setLiveDragging?.(false); break;
     case 'RESET_DIMENSIONS': Object.assign(app.poolParams,{length:8,width:4,shallow:1.2,deep:1.8}); app.syncSlidersFromParams(); await app.rebuildPoolForCurrentShape(); break;
     case 'RESET_DESIGN': location.reload(); return;
+    case 'PREVIEW_SPA':
     case 'UPDATE_SPA':
       if (payload.enabled != null && payload.enabled !== !!app.spa) document.getElementById('addRemoveSpa')?.click();
       if (payload.shape) input('spaShape', payload.shape);
@@ -84,8 +90,7 @@ async function apply(type, payload={}) {
     case 'SET_PAVING': console.info(type, payload.value, 'uses current bundled material system'); break;
     default: console.warn('Unsupported designer command', type, payload);
   }
-  setTimeout(changed, 120);
-  post('LOADING_COMPLETE', { type });
+  if (isPreview) changed(); else { setTimeout(changed, 60); post('LOADING_COMPLETE', { type }); }
 }
 window.addEventListener('message', event => {
   if (!parentOriginAllowed(event.origin)) return;
@@ -95,6 +100,12 @@ window.addEventListener('message', event => {
 export function connectDesignerBridge(poolApp, presets=[]) {
   app = poolApp; starterPresets = presets;
   if (embedded && params.get('externalControls') === '1') document.documentElement.classList.add('external-controls');
-  app.poolParams?.subscribe?.(() => setTimeout(changed, 0));
+  let stateFrame = 0;
+  const scheduleChanged = () => {
+    if (stateFrame) return;
+    stateFrame = requestAnimationFrame(() => { stateFrame = 0; changed(); });
+  };
+  app.poolParams?.subscribe?.(scheduleChanged);
+  app._notifyDesignerStateChanged = scheduleChanged;
   post('DESIGNER_READY', snapshot()); changed();
 }

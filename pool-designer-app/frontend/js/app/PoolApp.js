@@ -772,6 +772,7 @@ export class PoolApp {
       updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
     }
     this._updateSpaHandleSliderUI();
+    this._notifyDesignerStateChanged?.();
   }
 
   async _onSpaHandlePointerUp() {
@@ -785,6 +786,7 @@ export class PoolApp {
       this.applyPoolElevation();
       await this.pbrManager?.applyTilesToSpa?.(this.spa);
       this.refreshSpaTopOffsetSlider();
+      this._notifyDesignerStateChanged?.();
       if (this.poolGroup) {
         updatePoolWaterVoid(this.poolGroup, this.spa);
         updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
@@ -6643,7 +6645,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
   }
 
   getPoolElevation() {
-    return this.poolParams?.raised ? RAISED_POOL_HEIGHT : 0;
+    if (!this.poolParams?.raised) return 0;
+    const configured = Number(this.poolParams?.poolElevation);
+    return Number.isFinite(configured) ? THREE.MathUtils.clamp(configured, 0.1, 1.5) : RAISED_POOL_HEIGHT;
   }
 
   _applyElevationDelta(root, targetElevation) {
@@ -6692,12 +6696,29 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     if (captureUndo) this.captureUndoState?.(next ? "Raise pool" : "Lower pool");
     this.poolParams.raised = next;
-    this.poolParams.poolElevation = next ? RAISED_POOL_HEIGHT : 0;
+    if (next) {
+      const current = Number(this.poolParams.poolElevation);
+      this.poolParams.poolElevation = Number.isFinite(current) && current > 0 ? current : RAISED_POOL_HEIGHT;
+    } else {
+      this.poolParams.poolElevation = 0;
+    }
     this.applyPoolElevation();
     this.syncPoolRaisedControl();
 
     document.dispatchEvent(new CustomEvent("poolElevationChanged", {
       detail: { raised: next, elevation: this.poolParams.poolElevation }
+    }));
+  }
+
+  async setPoolElevationHeight(height, { captureUndo = false } = {}) {
+    const nextHeight = THREE.MathUtils.clamp(Number(height) || RAISED_POOL_HEIGHT, 0.1, 1.5);
+    if (captureUndo) this.captureUndoState?.("Change raised pool height");
+    this.poolParams.raised = true;
+    this.poolParams.poolElevation = nextHeight;
+    this.applyPoolElevation();
+    this.syncPoolRaisedControl();
+    document.dispatchEvent(new CustomEvent("poolElevationChanged", {
+      detail: { raised: true, elevation: nextHeight }
     }));
   }
 
@@ -8403,8 +8424,9 @@ setupPoolEditor() {
         }
 
         updateSpa(this.spa);
-      this.applyPoolElevation();
+        this.applyPoolElevation();
         this.refreshSpaTopOffsetSlider();
+        this._notifyDesignerStateChanged?.();
         await this.pbrManager.applyTilesToSpa(this.spa);
 
         if (this.poolGroup) {
