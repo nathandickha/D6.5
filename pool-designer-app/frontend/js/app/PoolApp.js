@@ -36,6 +36,8 @@ import { createPoolState } from "../state/PoolState.js";
 import { ControllerRegistry } from "../core/ControllerRegistry.js";
 
 
+const RAISED_POOL_HEIGHT = 0.7;
+
 const STARTER_POOL_PRESETS = [
   {
     id: "rectangle-classic",
@@ -160,7 +162,9 @@ export class PoolApp {
 
       kidneyLeftRadius: 2.0,
       kidneyRightRadius: 3.0,
-      kidneyOffset: 1.0
+      kidneyOffset: 1.0,
+      raised: false,
+      poolElevation: 0
     });
 
     this.tileSize = 0.3;
@@ -762,6 +766,7 @@ export class PoolApp {
     }
 
     updateSpa(this.spa);
+      this.applyPoolElevation();
     if (this.poolGroup) {
       updatePoolWaterVoid(this.poolGroup, this.spa);
       updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
@@ -777,6 +782,7 @@ export class PoolApp {
     if (this.controls) this.controls.enabled = true;
     if (this.spa) {
       updateSpa(this.spa);
+      this.applyPoolElevation();
       await this.pbrManager?.applyTilesToSpa?.(this.spa);
       this.refreshSpaTopOffsetSlider();
       if (this.poolGroup) {
@@ -3297,6 +3303,7 @@ const concreteHatchTex = makeConcreteHatchTexture();
           this.spa.userData.poolParams = this.poolParams;
           snapToPool(this.spa);
           updateSpa(this.spa);
+      this.applyPoolElevation();
           await this.pbrManager.applyTilesToSpa(this.spa);
       // Attach caustics to spa interior too
       try { this.caustics?.attachToGroup?.(this.spa); } catch (e) {}
@@ -6342,6 +6349,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
           }
           setSpaTopOffset(snapshot.spa.topHeight ?? 0);
           updateSpa(this.spa);
+      this.applyPoolElevation();
           snapToPool(this.spa);
           await this.pbrManager?.applyTilesToSpa?.(this.spa);
           this.setSpaSlidersEnabled(true);
@@ -6637,6 +6645,85 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     });
   }
 
+  getPoolElevation() {
+    return this.poolParams?.raised ? RAISED_POOL_HEIGHT : 0;
+  }
+
+  _applyElevationDelta(root, targetElevation) {
+    if (!root?.position) return;
+    if (!root.userData) root.userData = {};
+
+    let previous = Number(root.userData.poolElevationApplied) || 0;
+    const lastAppliedZ = Number(root.userData.poolElevationLastZ);
+
+    // Some geometry updates (especially updateSpa) recalculate the root Z from
+    // its unraised dimensions. Detect that reset and reapply the full elevation.
+    if (Number.isFinite(lastAppliedZ) && Math.abs(root.position.z - lastAppliedZ) > 1e-6) {
+      previous = 0;
+    }
+
+    root.position.z += targetElevation - previous;
+    root.userData.poolElevationApplied = targetElevation;
+    root.userData.poolElevationLastZ = root.position.z;
+  }
+
+  applyPoolElevation() {
+    const elevation = this.getPoolElevation();
+    this.poolParams.poolElevation = elevation;
+
+    // The pool group contains the shell, floor, water, coping, steps and benches.
+    this._applyElevationDelta(this.poolGroup, elevation);
+
+    // The spa and channel are separate scene roots, so move them by the same delta.
+    this._applyElevationDelta(this.spa, elevation);
+    this._applyElevationDelta(this.ground?.userData?.spaChannelGroup, elevation);
+    this._applyElevationDelta(this.ground?.userData?.spaChannelWaterGroup, elevation);
+
+    // Ground and paving are intentionally not translated.
+    this._updateDimensionHandles?.();
+    this._updateSpaDimensionHandles?.();
+    this._updateSectionDimensionHandles?.();
+  }
+
+  async setPoolRaised(enabled, { captureUndo = true, focusCamera = true } = {}) {
+    const next = !!enabled;
+    if (!!this.poolParams.raised === next) {
+      this.applyPoolElevation();
+      this.syncPoolRaisedControl();
+      return;
+    }
+
+    if (captureUndo) this.captureUndoState?.(next ? "Raise pool" : "Lower pool");
+    this.poolParams.raised = next;
+    this.poolParams.poolElevation = next ? RAISED_POOL_HEIGHT : 0;
+    this.applyPoolElevation();
+    this.syncPoolRaisedControl();
+
+    if (focusCamera) this.focusCameraOnPoolShape?.();
+    document.dispatchEvent(new CustomEvent("poolElevationChanged", {
+      detail: { raised: next, elevation: this.poolParams.poolElevation }
+    }));
+  }
+
+  syncPoolRaisedControl() {
+    const btn = document.getElementById("raisedPoolToggle");
+    if (!btn) return;
+    const raised = !!this.poolParams?.raised;
+    btn.setAttribute("aria-pressed", raised ? "true" : "false");
+    btn.classList.toggle("active", raised);
+    btn.textContent = raised ? "Lower Pool to Ground" : "Raise Pool 0.7 m";
+  }
+
+  setupPoolElevationControl() {
+    const btn = document.getElementById("raisedPoolToggle");
+    if (!btn || btn.dataset.bound === "true") return;
+    btn.dataset.bound = "true";
+    btn.addEventListener("click", async () => {
+      await this.setPoolRaised(!this.poolParams?.raised);
+    });
+    this.syncPoolRaisedControl();
+  }
+
   // --------------------------------------------------------------
   // REBUILD POOL
   // --------------------------------------------------------------
@@ -6686,7 +6773,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     if (this.scene && this.poolGroup) {
       this.scene.add(this.poolGroup);
-updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this.spa);
+      this.applyPoolElevation();
+      updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this.spa);
       updateGrassForPool(this.scene, this.poolGroup);
     }
 
@@ -6702,9 +6790,11 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
       this.spa.userData.poolParams = this.poolParams;
       snapToPool(this.spa);
       updateSpa(this.spa);
+      this.applyPoolElevation();
       await this.pbrManager.applyTilesToSpa(this.spa);
       updatePoolWaterVoid(this.poolGroup, this.spa);
       updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
+      this.applyPoolElevation();
     }
 
     this._reapplySavedWallRaiseState();
@@ -6853,8 +6943,10 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
         this.spa.userData.spaLength = Number.isFinite(nextLength) ? nextLength : 2;
         this.spa.userData.spaWidth = Number.isFinite(nextWidth) ? nextWidth : 2;
         updateSpa(this.spa);
+      this.applyPoolElevation();
         snapToPool(this.spa);
         updateSpa(this.spa);
+      this.applyPoolElevation();
         if (Number.isFinite(Number(preset.spa.topHeight))) {
           setSpaTopOffset(this.spa, Number(preset.spa.topHeight));
         }
@@ -6879,6 +6971,7 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
     this._updateDimensionHandles();
     this._updateSpaDimensionHandles();
     this._updateSectionDimensionHandles();
+    this.syncPoolRaisedControl();
     this.openStarterModelView(preset);
   }
 
@@ -6916,8 +7009,10 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
       this.spa.userData.spaLength = Number.isFinite(nextLength) ? nextLength : 2;
       this.spa.userData.spaWidth = Number.isFinite(nextWidth) ? nextWidth : 2;
       updateSpa(this.spa);
+      this.applyPoolElevation();
       snapToPool(this.spa);
       updateSpa(this.spa);
+      this.applyPoolElevation();
       if (Number.isFinite(Number(starterSpa.topHeight))) {
         setSpaTopOffset(this.spa, Number(starterSpa.topHeight));
       }
@@ -7032,6 +7127,7 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
     this.setupShapeDropdown();
     this.setupSpaSliders();
     this.setupPoolSliders();
+    this.setupPoolElevationControl();
     this.setupStepLayoutControls();
     this.setupRippleClick();
     setupPoolAssistant(this);
@@ -7905,6 +8001,7 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
       if (this.spa && this.spaDrag.moved) {
         snapToPool(this.spa);
         updateSpa(this.spa);
+      this.applyPoolElevation();
         await this.pbrManager.applyTilesToSpa(this.spa);
         this.refreshSpaTopOffsetSlider();
 
@@ -7995,6 +8092,7 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
         if (widthOutput) widthOutput.textContent = diameter.toFixed(2) + " m";
       }
       updateSpa(this.spa);
+      this.applyPoolElevation();
       this.refreshSpaTopOffsetSlider();
       await this.pbrManager.applyTilesToSpa(this.spa);
       if (this.poolGroup) {
@@ -8026,12 +8124,14 @@ updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this
 
     snapToPool(this.spa);
     updateSpa(this.spa);
+      this.applyPoolElevation();
 
     await this.pbrManager.applyTilesToSpa(this.spa);
 
     if (this.poolGroup) {
       updatePoolWaterVoid(this.poolGroup, this.spa);
       updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
+      this.applyPoolElevation();
     }
 
     this.selectedSpa = this.spa;
@@ -8328,6 +8428,7 @@ setupPoolEditor() {
         }
 
         updateSpa(this.spa);
+      this.applyPoolElevation();
         this.refreshSpaTopOffsetSlider();
         await this.pbrManager.applyTilesToSpa(this.spa);
 
@@ -8540,6 +8641,7 @@ setupPoolEditor() {
         this.spa.userData.poolParams = this.poolParams;
         snapToPool(this.spa);
         updateSpa(this.spa);
+      this.applyPoolElevation();
       } catch (_) {}
     }
 

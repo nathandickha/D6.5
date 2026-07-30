@@ -23,7 +23,7 @@ function clickData(selector, value) {
 function snapshot() {
   const p = app?.poolParams?.snapshot?.() || app?.poolParams || {};
   const spa = app?.spa;
-  return { pool: { ...p }, spa: { enabled:!!spa, shape:spa?.userData?.spaShape || null, width:spa?.userData?.spaWidth || null, length:spa?.userData?.spaLength || null, height:Number(document.getElementById('spaTopHeight')?.value || 0), x:spa?.position?.x || 0, y:spa?.position?.y || 0 }, camera: { section:!!app?.sectionViewEnabled } };
+  return { pool: { ...p, raised: !!p.raised, poolElevation: Number(p.poolElevation || 0) }, spa: { enabled:!!spa, shape:spa?.userData?.spaShape || null, width:spa?.userData?.spaWidth || null, length:spa?.userData?.spaLength || null, height:Number(document.getElementById('spaTopHeight')?.value || 0), x:spa?.position?.x || 0, y:spa?.position?.y || 0 }, camera: { section:!!app?.sectionViewEnabled } };
 }
 function changed() { post('DESIGN_STATE_CHANGED', snapshot()); }
 async function apply(type, payload={}) {
@@ -34,6 +34,7 @@ async function apply(type, payload={}) {
     case 'SET_RENDER_PAUSED': app._renderPaused = !!payload.paused; break;
     case 'SET_STARTER_POOL': { const preset = starterPresets.find(x => x.id === payload.id); if (preset) await app.applyStarterPreset(preset); break; }
     case 'SET_POOL_SHAPE': input('shape', payload.shape); break;
+    case 'SET_POOL_RAISED': await app.setPoolRaised?.(!!payload.raised); break;
     case 'SET_POOL_DIMENSIONS':
       if (payload.length != null) input('length', payload.length, 'input');
       if (payload.width != null) input('width', payload.width, 'input');
