@@ -41,6 +41,14 @@
     });
   });
 
+  function setPillState(button, active) {
+    if (!button) return;
+    button.setAttribute('aria-pressed', String(!!active));
+    button.classList.toggle('is-active', !!active);
+    const stateLabel = button.querySelector('[data-toggle-state]');
+    if (stateLabel) stateLabel.textContent = active ? 'On' : 'Off';
+  }
+
   document.querySelectorAll('[data-command]').forEach(el => {
     if (el.dataset.group) return;
     const eventName = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'click';
@@ -48,7 +56,13 @@
       const type = el.dataset.command;
       let payload = {};
       if (el.dataset.value != null) payload.value = el.dataset.value;
-      if (el.dataset.key) payload[el.dataset.key] = el.type === 'checkbox' ? el.checked : el.value;
+      if (el.dataset.key) {
+        if (el.matches('[data-toggle-pill]')) {
+          payload[el.dataset.key] = el.getAttribute('aria-pressed') !== 'true';
+        } else {
+          payload[el.dataset.key] = el.type === 'checkbox' ? el.checked : el.value;
+        }
+      }
       if (type === 'SHARE_DESIGN') {
         try { await navigator.clipboard.writeText(window.location.href); status.textContent = 'Design link copied'; } catch (_) { status.textContent = 'Copy unavailable'; }
         return;
@@ -130,7 +144,9 @@
     document.querySelector('[data-summary="depth"]').textContent = p.shallow != null && p.deep != null ? `${Number(p.shallow).toFixed(1)}–${Number(p.deep).toFixed(1)} m` : '—';
     document.querySelector('[data-summary="spa"]').textContent = s.enabled ? (s.shape || 'Enabled') : 'Off';
     const raisedToggle = document.querySelector('[data-command="SET_POOL_RAISED"][data-key="raised"]');
-    if (raisedToggle) raisedToggle.checked = !!p.raised;
+    setPillState(raisedToggle, !!p.raised);
+    const spaToggle = document.querySelector('[data-command="UPDATE_SPA"][data-key="enabled"]');
+    setPillState(spaToggle, !!s.enabled);
     const values = { length:p.length, width:p.width, shallowDepth:p.shallow, deepDepth:p.deep, spaWidth:s.width, spaLength:s.length, spaHeight:s.height, stepCount:p.stepCount, stepDepth:p.stepDepth, stepWidth:p.stepWidth };
     Object.entries(values).forEach(([key,value]) => {
       if (value == null) return;

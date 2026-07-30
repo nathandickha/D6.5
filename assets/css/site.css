@@ -289,3 +289,58 @@ body:not(.home-page){
 .designer-tab-panel.is-active{display:block}
 .designer-persistent-controls{border-top:1px solid #cbc9c4}
 @media(max-width:760px){.designer-control-tabs{position:sticky;top:0;z-index:4}.designer-accordion{height:calc(100% - 101px)}}
+
+
+/* Design-control pill toggles */
+.pool-designer-page .control-pill-toggle {
+  width: 100%;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #cfcdc8;
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
+  color: #272727;
+  padding: 7px 8px 7px 13px;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+.pool-designer-page .control-pill-toggle span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.pool-designer-page .control-pill-toggle small {
+  font-size: 9px;
+  color: #76716c;
+}
+.pool-designer-page .control-pill-toggle b {
+  min-width: 38px;
+  border-radius: 999px;
+  background: #e6e4df;
+  padding: 5px 8px;
+  color: #68635e;
+  font-size: 9px;
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.pool-designer-page .control-pill-toggle:hover {
+  border-color: #315f76;
+}
+.pool-designer-page .control-pill-toggle.is-active,
+.pool-designer-page .control-pill-toggle[aria-pressed="true"] {
+  border-color: #315f76;
+  background: #edf3f5;
+}
+.pool-designer-page .control-pill-toggle.is-active b,
+.pool-designer-page .control-pill-toggle[aria-pressed="true"] b {
+  background: #315f76;
+  color: #fff;
+}

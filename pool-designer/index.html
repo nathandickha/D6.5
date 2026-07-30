@@ -41,18 +41,17 @@
     <div class="designer-accordion" id="designerAccordion">
       <div class="designer-tab-panel is-active" id="poolSpaControls" role="tabpanel" aria-labelledby="poolSpaTab" data-control-panel="pool-spa">
       <details id="poolControlsSection" open><summary>Pool</summary><div class="control-content">
-        <label>Starter pool<select data-command="SET_STARTER_POOL" data-key="id"><option value="rectangle">Rectangle</option><option value="rectangle-square-spa">Rectangle + square spa</option><option value="rectangle-circular-spa">Rectangle + circular spa</option><option value="l-shape">L-shape</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="lap-pool">Lap pool</option><option value="plunge-pool">Plunge pool</option></select></label>
         <label>Pool shape<select data-command="SET_POOL_SHAPE" data-key="shape"><option value="rectangular">Rectangle</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="L">L-shape</option><option value="freeform">Freeform</option></select></label>
+        <button type="button" class="control-pill-toggle raised-pool-control" data-command="SET_POOL_RAISED" data-key="raised" data-toggle-pill aria-pressed="false"><span>Raised pool</span><small>0.7 m</small><b data-toggle-state>Off</b></button>
         <label>Length <output data-output="length">8.0 m</output><input type="range" min="3" max="15" step="0.1" value="8" data-group="poolDimensions" data-key="length"></label>
         <label>Width <output data-output="width">4.0 m</output><input type="range" min="2" max="8" step="0.1" value="4" data-group="poolDimensions" data-key="width"></label>
         <label>Shallow depth <output data-output="shallowDepth">1.2 m</output><input type="range" min="0.8" max="2" step="0.05" value="1.2" data-group="poolDimensions" data-key="shallowDepth"></label>
         <label>Deep depth <output data-output="deepDepth">1.8 m</output><input type="range" min="1" max="3" step="0.05" value="1.8" data-group="poolDimensions" data-key="deepDepth"></label>
-        <label class="toggle-line raised-pool-control"><span><strong>Raised pool</strong><small>Lift pool assembly 0.7 m</small></span><input type="checkbox" data-command="SET_POOL_RAISED" data-key="raised" aria-label="Raise pool 0.7 metres"></label>
         <div class="control-button-row"><button type="button" data-command="RESET_DIMENSIONS">Reset dimensions</button><button type="button" class="danger" data-command="RESET_DESIGN">Reset design</button></div>
       </div></details>
 
       <details id="spaControlsSection"><summary>Spa</summary><div class="control-content">
-        <label class="toggle-line"><span>Spa enabled</span><input type="checkbox" data-command="UPDATE_SPA" data-key="enabled"></label>
+        <button type="button" class="control-pill-toggle" data-command="UPDATE_SPA" data-key="enabled" data-toggle-pill aria-pressed="false"><span>Spa enabled</span><b data-toggle-state>Off</b></button>
         <label>Spa shape<select data-command="UPDATE_SPA" data-key="shape"><option value="square">Rectangular</option><option value="circular">Circular</option></select></label>
         <label>Width / diameter <output data-output="spaWidth">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="width"></label>
         <label>Length <output data-output="spaLength">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="length"></label>
