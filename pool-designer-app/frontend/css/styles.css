@@ -1054,3 +1054,41 @@ body {
     font-size: 16px;
   }
 }
+
+/* Embedded external-controls mode: use the full iframe viewport without
+   reserving a browser scrollbar gutter at the right edge. */
+html.external-controls,
+html.external-controls body {
+  overflow: clip !important;
+  scrollbar-gutter: auto !important;
+}
+
+html.external-controls .app-shell {
+  width: 100vw !important;
+  max-width: none !important;
+}
+
+html.external-controls .canvas-wrap {
+  min-width: 0;
+}
+
+/* Align the starter-pool selection panel with the top of the surrounding
+   designer workspace. Keep the side/bottom breathing room, but remove the
+   unnecessary gap above the panel. */
+.starter-overlay {
+  padding: 0 26px 26px;
+}
+
+.starter-panel {
+  max-height: calc(100vh - 26px);
+}
+
+@media (max-width: 720px) {
+  .starter-overlay {
+    padding: 0 12px 12px;
+  }
+
+  .starter-panel {
+    max-height: calc(100vh - 12px);
+  }
+}
