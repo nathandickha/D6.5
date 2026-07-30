@@ -92,7 +92,7 @@
     const message = event.data || {};
     if (message.source !== 'atelier3d-designer') return;
     switch (message.type) {
-      case 'DESIGNER_READY': ready = true; loading?.classList.add('is-ready'); status.textContent = 'Connected'; sendDesignerCommand('REQUEST_DESIGN_STATE'); break;
+      case 'DESIGNER_READY': ready = true; loading?.classList.add('is-ready'); status.textContent = 'Connected'; sendDesignerCommand('REQUEST_DESIGN_STATE'); requestAnimationFrame(() => updateRenderPause(false)); break;
       case 'DESIGN_STATE_CHANGED': updateDesignerControls(message.payload); status.textContent = 'Saved in model'; break;
       case 'LOADING_STARTED': status.textContent = 'Updating…'; break;
       case 'LOADING_COMPLETE': status.textContent = 'Connected'; break;
@@ -105,11 +105,47 @@
   setTimeout(() => { if (!ready) error.hidden = false; }, 15000);
 
   let previousScrollY = window.scrollY;
+  let scrollFrame = 0;
+  let scrollEndTimer = 0;
+  let workspaceVisible = true;
+  let renderPaused = false;
   const header = document.querySelector('.site-header');
   const reveal = document.querySelector('.designer-header-reveal');
-  const showHeader = () => { header?.classList.remove('designer-header-hidden'); document.body.classList.remove('header-released'); };
-  const hideHeader = () => { if (!document.querySelector('.main-nav.open')) { header?.classList.add('designer-header-hidden'); document.body.classList.add('header-released'); } };
-  window.addEventListener('scroll', () => { const y = window.scrollY; if (y < 30) showHeader(); else if (y > previousScrollY && y > 70) hideHeader(); else if (y < previousScrollY) showHeader(); previousScrollY = y; }, { passive:true });
+  const workspace = document.querySelector('.designer-workspace');
+  const showHeader = () => header?.classList.remove('designer-header-hidden');
+  const hideHeader = () => { if (!document.querySelector('.main-nav.open')) header?.classList.add('designer-header-hidden'); };
+
+  function updateRenderPause(scrolling = false) {
+    const shouldPause = scrolling || !workspaceVisible || document.hidden;
+    if (!ready || shouldPause === renderPaused) return;
+    renderPaused = shouldPause;
+    sendDesignerCommand('SET_RENDER_PAUSED', { paused: shouldPause });
+  }
+
+  // Throttle scroll work to one update per painted frame. The header is moved
+  // only with transform, so scrolling never resizes the WebGL iframe.
+  window.addEventListener('scroll', () => {
+    updateRenderPause(true);
+    clearTimeout(scrollEndTimer);
+    scrollEndTimer = window.setTimeout(() => updateRenderPause(false), 160);
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0;
+      const y = window.scrollY;
+      if (y < 30) showHeader();
+      else if (y > previousScrollY && y > 70) hideHeader();
+      else if (y < previousScrollY) showHeader();
+      previousScrollY = y;
+    });
+  }, { passive:true });
+
+  if ('IntersectionObserver' in window && workspace) {
+    new IntersectionObserver(([entry]) => {
+      workspaceVisible = entry.isIntersecting && entry.intersectionRatio > 0.08;
+      updateRenderPause(false);
+    }, { threshold:[0, 0.08, 0.25] }).observe(workspace);
+  }
+  document.addEventListener('visibilitychange', () => updateRenderPause(false));
   reveal?.addEventListener('pointerenter', showHeader);
   header?.addEventListener('focusin', showHeader);
 })();
