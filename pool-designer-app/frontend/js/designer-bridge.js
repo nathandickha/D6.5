@@ -35,12 +35,28 @@ async function apply(type, payload={}) {
     case 'SET_STARTER_POOL': { const preset = starterPresets.find(x => x.id === payload.id); if (preset) await app.applyStarterPreset(preset); break; }
     case 'SET_POOL_SHAPE': input('shape', payload.shape); break;
     case 'SET_POOL_RAISED': await app.setPoolRaised?.(!!payload.raised); break;
+    case 'BEGIN_POOL_DIMENSION_PREVIEW':
+      if (!app._live?.dragging) {
+        if (!app._live.baseParams) app._live.baseParams = { ...(app.poolGroup?.userData?.poolParams || app.poolParams) };
+        await app._setLiveDragging?.(true);
+      }
+      break;
+    case 'PREVIEW_POOL_DIMENSIONS':
+      if (!app._live?.dragging) {
+        if (!app._live.baseParams) app._live.baseParams = { ...(app.poolGroup?.userData?.poolParams || app.poolParams) };
+        await app._setLiveDragging?.(true);
+      }
+      if (payload.length != null) input('length', payload.length, 'input');
+      if (payload.width != null) input('width', payload.width, 'input');
+      if (payload.shallowDepth != null) input('shallow', payload.shallowDepth, 'input');
+      if (payload.deepDepth != null) input('deep', payload.deepDepth, 'input');
+      break;
     case 'SET_POOL_DIMENSIONS':
       if (payload.length != null) input('length', payload.length, 'input');
       if (payload.width != null) input('width', payload.width, 'input');
       if (payload.shallowDepth != null) input('shallow', payload.shallowDepth, 'input');
       if (payload.deepDepth != null) input('deep', payload.deepDepth, 'input');
-      await app._flushRebuildNow?.(); break;
+      await app._setLiveDragging?.(false); break;
     case 'RESET_DIMENSIONS': Object.assign(app.poolParams,{length:8,width:4,shallow:1.2,deep:1.8}); app.syncSlidersFromParams(); await app.rebuildPoolForCurrentShape(); break;
     case 'RESET_DESIGN': location.reload(); return;
     case 'UPDATE_SPA':

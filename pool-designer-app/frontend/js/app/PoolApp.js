@@ -4996,7 +4996,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
       this.updateHighlightForStep(step, true);
       this.clearHoverHighlight();
-      this.focusCameraOnStep?.(step);
 
       // Open Steps panel via UI helper (if present)
       if (window.openPanelFromCode) {
@@ -6124,7 +6123,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
       this.updateHighlightForWall(wall, true);
       this.clearWallHoverHighlight();
-      this.focusCameraOnWall(wall);
 
       // Open Features panel via UI helper, if available
       if (window.openPanelFromCode) {
@@ -6365,7 +6363,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       }
 
       await this.rebuildPoolForCurrentShape();
-      this.focusCameraOnPoolShape();
       window.openPanelFromCode?.("shape");
     } finally {
       this.isRestoringUndo = false;
@@ -6685,7 +6682,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this._updateSectionDimensionHandles?.();
   }
 
-  async setPoolRaised(enabled, { captureUndo = true, focusCamera = true } = {}) {
+  async setPoolRaised(enabled, { captureUndo = true, focusCamera = false } = {}) {
     const next = !!enabled;
     if (!!this.poolParams.raised === next) {
       this.applyPoolElevation();
@@ -6699,7 +6696,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this.applyPoolElevation();
     this.syncPoolRaisedControl();
 
-    if (focusCamera) this.focusCameraOnPoolShape?.();
     document.dispatchEvent(new CustomEvent("poolElevationChanged", {
       detail: { raised: next, elevation: this.poolParams.poolElevation }
     }));
@@ -7159,33 +7155,15 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     if (!starterPreset) this.setupStarterPresetScreen();
 
-    document.addEventListener("shapePanelOpened", () => {
-      this.focusCameraOnPoolShape();
-    });
-
     document.addEventListener("activePanelChanged", (event) => {
       const panelName = event?.detail?.panelName || null;
       this.setSectionViewEnabled(panelName === "dimensions");
     });
 
-    // CAMERA ZOOM WHEN STEPS PANEL OPENS
+    // Opening Steps no longer moves the camera automatically. Keep only the
+    // water-visibility treatment; camera movement is reserved for Dimensions.
     document.addEventListener("stepsPanelOpened", () => {
       this.ghostifyWater();
-
-      if (!this.poolGroup) return;
-
-      const steps = [];
-      this.poolGroup.traverse((o) => o.userData?.isStep && steps.push(o));
-      if (!steps.length) return;
-
-      const firstStep = steps[0];
-      const target = firstStep.position.clone();
-      target.z += 0.3;
-
-      const offset = new THREE.Vector3(3, 2, 2);
-      const newPos = target.clone().add(offset);
-
-      this.animateCameraTo(newPos, target, 0.8);
     });
 
     document.addEventListener("stepsPanelClosed", () => {
@@ -7819,7 +7797,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     polygon._emitChange?.();
 
     await this.rebuildPoolForCurrentShape();
-    this.focusCameraOnPoolShape();
     window.openPanelFromCode?.("shape");
     this.setCustomizeMode(true);
     this.normalizeShapeLabelIfNeeded();
@@ -7849,7 +7826,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       polygon._emitChange?.();
 
       await this.rebuildPoolForCurrentShape();
-      this.focusCameraOnPoolShape();
       window.openPanelFromCode?.("shape");
       this.isCustomShape = true;
       this.refreshDisplayedShapeLabel();
@@ -7870,7 +7846,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     polygon._emitChange?.();
 
     await this.rebuildPoolForCurrentShape();
-    this.focusCameraOnPoolShape();
     window.openPanelFromCode?.("shape");
     this.isCustomShape = true;
     this.refreshDisplayedShapeLabel();
