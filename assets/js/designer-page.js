@@ -57,6 +57,12 @@
     });
   });
 
+  // Always present the complete Pool controls when the designer page opens.
+  // Browsers may restore a previously collapsed <details> state during navigation,
+  // so explicitly reopen the Pool section after the DOM is ready.
+  const poolControlsSection = document.getElementById('poolControlsSection');
+  if (poolControlsSection) poolControlsSection.open = true;
+
   accordion?.querySelectorAll('details').forEach(item => item.addEventListener('toggle', () => {
     if (!item.open) return;
     accordion.querySelectorAll('details').forEach(other => { if (other !== item) other.open = false; });
