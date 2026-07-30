@@ -1092,3 +1092,13 @@ html.external-controls .canvas-wrap {
     max-height: calc(100vh - 12px);
   }
 }
+
+/* Raised pool control */
+.pool-elevation-row { margin-top: 12px; }
+#raisedPoolToggle { width: 100%; }
+#raisedPoolToggle.active,
+#raisedPoolToggle[aria-pressed="true"] {
+  background: #163f52;
+  border-color: #163f52;
+  color: #fff;
+}
