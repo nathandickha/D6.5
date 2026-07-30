@@ -217,7 +217,7 @@ body:not(.home-page){
 }
 
 /* Pool Designer workspace */
-.pool-designer-page{height:100vh;overflow:hidden;background:#efefec}
+.pool-designer-page{min-height:100vh;overflow-x:hidden;background:#efefec}
 .pool-designer-page .site-header{position:fixed;inset:0 0 auto;z-index:80;background:rgba(250,249,247,.88);backdrop-filter:blur(18px);border-bottom:1px solid rgba(40,40,40,.09);transition:transform 220ms ease,box-shadow 220ms ease}
 .pool-designer-page .site-header.designer-header-hidden{transform:translateY(-105%)}
 .designer-header-reveal{position:fixed;z-index:79;top:0;left:0;right:0;height:10px}
@@ -231,3 +231,9 @@ body:not(.home-page){
 .designer-mobile-toolbar,.designer-sheet-backdrop{display:none}
 @media(max-width:1100px){.designer-workspace{grid-template-columns:0 minmax(0,1fr) 292px}.designer-info{display:none}}
 @media(max-width:760px){.pool-designer-page .site-header{height:64px}.designer-workspace{padding-top:64px;display:block}.pool-designer-page.header-released .designer-workspace{padding-top:0}.designer-stage{height:100%}.designer-controls{position:fixed;z-index:110;left:0;right:0;bottom:0;width:100%!important;height:min(78vh,680px);transform:translateY(102%);transition:transform .24s ease;border-left:0;border-top:1px solid #d5d2cd;border-radius:12px 12px 0 0}.designer-controls.sheet-open{transform:translateY(0)}.designer-controls .panel-collapse{display:none}.designer-mobile-toolbar{position:fixed;z-index:90;left:12px;right:12px;bottom:12px;display:flex;gap:8px;padding:7px;background:rgba(250,249,247,.9);backdrop-filter:blur(16px);border:1px solid rgba(30,30,30,.12);box-shadow:0 6px 24px rgba(0,0,0,.12)}.designer-mobile-toolbar button{flex:1;border:0;background:#1c1c1c;color:#fff;padding:11px;font-size:11px}.designer-sheet-backdrop{position:fixed;z-index:105;inset:0;background:rgba(0,0,0,.28)}.designer-sheet-backdrop.is-open{display:block}.designer-loading{top:12px;left:12px}}
+
+
+/* Restored Pool Designer supporting content */
+.pool-designer-page .faq-section,.pool-designer-page .learn-section,.pool-designer-page .site-footer{position:relative;z-index:2}
+.pool-designer-page .faq-section{background:#faf9f7}
+.pool-designer-page .learn-section,.pool-designer-page .site-footer{background:#fff}
