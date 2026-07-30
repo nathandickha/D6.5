@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>3D Pool Designer | Atelier 3D</title>
+  <meta name="description" content="Design your swimming pool in an interactive 3D studio.">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body class="pool-designer-page">
+<header class="site-header">
+  <div class="shell nav-wrap">
+    <a class="brand" href="../index.html"><span class="brand-dot"></span>ATELIER 3D</a>
+    <nav class="main-nav" id="mainNav"><a href="index.html">Designer</a><a href="../pool-designs/index.html">Designs</a><a href="../guides/index.html">Guides</a><a href="../professionals/index.html">For Professionals</a></nav>
+    <a class="btn btn-dark" href="index.html">Start Designing</a>
+    <button class="mobile-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
+  </div>
+</header>
+<div class="designer-header-reveal" aria-hidden="true"></div>
+<main class="designer-workspace">
+  <aside class="designer-info" aria-label="Designer help">
+    <div class="eyebrow">The studio</div>
+    <h1>Design in 3D</h1>
+    <p>Orbit, zoom and refine the real pool model. All controls update the bundled Three.js designer directly.</p>
+    <div class="designer-hints"><span>Drag to orbit</span><span>Scroll to zoom</span><span>Use the panel to edit</span></div>
+    <dl class="designer-summary"><div><dt>Shape</dt><dd data-summary="shape">—</dd></div><div><dt>Size</dt><dd data-summary="size">—</dd></div><div><dt>Depth</dt><dd data-summary="depth">—</dd></div><div><dt>Spa</dt><dd data-summary="spa">—</dd></div></dl>
+  </aside>
+
+  <section class="designer-stage" aria-label="Interactive 3D pool designer">
+    <iframe id="pool-designer-frame" src="../pool-designer-app/frontend/index.html?embedded=1&amp;externalControls=1&amp;starter=rectangle" title="Atelier 3D Pool Designer" loading="eager" allow="fullscreen"></iframe>
+    <div class="designer-loading" id="designerLoading"><span></span><b>Loading 3D designer</b></div>
+    <div class="designer-error" id="designerError" hidden>The 3D designer could not be loaded. Refresh the page or <a href="../pool-designer-app/frontend/index.html" target="_blank" rel="noopener">open the designer in a new tab</a>.</div>
+  </section>
+
+  <aside class="designer-controls" id="designerControls" aria-label="Design controls">
+    <div class="designer-controls-head"><button class="panel-collapse" id="panelCollapse" type="button" aria-label="Collapse design controls">‹</button><div><strong>Design controls</strong><small id="controlStatus">Connecting…</small></div></div>
+    <div class="designer-accordion" id="designerAccordion">
+      <details open><summary>Pool</summary><div class="control-content">
+        <label>Starter pool<select data-command="SET_STARTER_POOL" data-key="id"><option value="rectangle">Rectangle</option><option value="rectangle-square-spa">Rectangle + square spa</option><option value="rectangle-circular-spa">Rectangle + circular spa</option><option value="l-shape">L-shape</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="lap-pool">Lap pool</option><option value="plunge-pool">Plunge pool</option></select></label>
+        <label>Pool shape<select data-command="SET_POOL_SHAPE" data-key="shape"><option value="rectangular">Rectangle</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="L">L-shape</option><option value="freeform">Freeform</option></select></label>
+        <label>Length <output data-output="length">8.0 m</output><input type="range" min="3" max="15" step="0.1" value="8" data-group="poolDimensions" data-key="length"></label>
+        <label>Width <output data-output="width">4.0 m</output><input type="range" min="2" max="8" step="0.1" value="4" data-group="poolDimensions" data-key="width"></label>
+        <label>Shallow depth <output data-output="shallowDepth">1.2 m</output><input type="range" min="0.8" max="2" step="0.05" value="1.2" data-group="poolDimensions" data-key="shallowDepth"></label>
+        <label>Deep depth <output data-output="deepDepth">1.8 m</output><input type="range" min="1" max="3" step="0.05" value="1.8" data-group="poolDimensions" data-key="deepDepth"></label>
+        <div class="control-button-row"><button type="button" data-command="RESET_DIMENSIONS">Reset dimensions</button><button type="button" class="danger" data-command="RESET_DESIGN">Reset design</button></div>
+      </div></details>
+
+      <details><summary>Spa</summary><div class="control-content">
+        <label class="toggle-line"><span>Spa enabled</span><input type="checkbox" data-command="UPDATE_SPA" data-key="enabled"></label>
+        <label>Spa shape<select data-command="UPDATE_SPA" data-key="shape"><option value="square">Rectangular</option><option value="circular">Circular</option></select></label>
+        <label>Width / diameter <output data-output="spaWidth">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="width"></label>
+        <label>Length <output data-output="spaLength">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="length"></label>
+        <label>Height above pool <output data-output="spaHeight">0.0 m</output><input type="range" min="-0.2" max="1.2" step="0.05" value="0" data-group="spa" data-key="height"></label>
+        <p class="control-note">Position, snapping and channel geometry remain editable directly in the 3D scene.</p>
+      </div></details>
+
+      <details><summary>Steps</summary><div class="control-content">
+        <label>Step style<select data-command="UPDATE_STEPS" data-key="style"><option value="rectangle">Straight</option><option value="diagonal">Corner</option><option value="circular">Circular corner</option><option value="radius">Radius corner</option></select></label>
+        <label>Wall<select data-command="UPDATE_STEPS" data-key="wall"><option value="west">West / shallow end</option><option value="east">East / deep end</option><option value="north">North / top</option><option value="south">South / bottom</option></select></label>
+        <label>Position<select data-command="UPDATE_STEPS" data-key="position"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
+        <label>Number of steps <output data-output="stepCount">3</output><input type="range" min="1" max="8" step="1" value="3" data-group="steps" data-key="count"></label>
+        <label>Step depth <output data-output="stepDepth">0.20 m</output><input type="range" min="0.1" max="0.5" step="0.01" value="0.2" data-group="steps" data-key="depth"></label>
+        <label>Step width <output data-output="stepWidth">0.90 m</output><input type="range" min="0.3" max="5" step="0.05" value="0.9" data-group="steps" data-key="width"></label>
+      </div></details>
+
+      <details><summary>Benches</summary><div class="control-content">
+        <label>Step layout<select data-command="UPDATE_BENCH" data-key="mode"><option value="bench">Bench seat</option><option value="stepsOnly">Steps only</option></select></label>
+        <p class="control-note">Bench seating is integrated with the current step system. Select a step in the model for advanced push/pull editing.</p>
+      </div></details>
+
+      <details><summary>Interior Finish</summary><div class="control-content"><div class="swatch-grid">
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Blue"><i style="background:#4b849a"></i>Blue</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="White"><i style="background:#e8e8e4"></i>White</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Black"><i style="background:#242626"></i>Black</button>
+        <button type="button" data-command="SET_INTERIOR_TILE" data-value="Antique Opal"><i style="background:#b8ac96"></i>Antique Opal</button>
+      </div></div></details>
+
+      <details><summary>Waterline Tile</summary><div class="control-content"><p class="control-note">Uses the same real tile library as the interior finish in this version of the designer.</p><div class="swatch-grid compact">
+        <button type="button" data-command="SET_WATERLINE_TILE" data-value="Blue"><i style="background:#4b849a"></i>Blue</button><button type="button" data-command="SET_WATERLINE_TILE" data-value="White"><i style="background:#e8e8e4"></i>White</button><button type="button" data-command="SET_WATERLINE_TILE" data-value="Black"><i style="background:#242626"></i>Black</button><button type="button" data-command="SET_WATERLINE_TILE" data-value="Antique Opal"><i style="background:#b8ac96"></i>Opal</button>
+      </div></div></details>
+
+      <details><summary>Coping</summary><div class="control-content"><div class="swatch-grid compact"><button type="button" data-command="SET_COPING" data-value="stone"><i class="stone"></i>Embedded stone</button><button type="button" data-command="SET_COPING" data-value="travertine"><i class="travertine"></i>Travertine</button></div></div></details>
+      <details><summary>Paving</summary><div class="control-content"><div class="swatch-grid compact"><button type="button" data-command="SET_PAVING" data-value="stone"><i class="stone"></i>Embedded stone</button><button type="button" data-command="SET_PAVING" data-value="travertine"><i class="travertine"></i>Travertine</button></div></div></details>
+
+      <details><summary>Environment</summary><div class="control-content">
+        <label>Camera view<select data-command="SET_CAMERA_VIEW" data-key="view"><option value="perspective">Perspective</option><option value="top">Top view</option><option value="section">Section view</option></select></label>
+        <div class="control-button-row"><button type="button" data-command="RESET_CAMERA">Reset camera</button></div>
+        <p class="control-note">Lighting and water appearance continue to use the designer’s calibrated scene defaults.</p>
+      </div></details>
+
+      <details><summary>Save and Share</summary><div class="control-content"><div class="control-button-row vertical"><button type="button" data-command="SAVE_SCREENSHOT">Save screenshot</button><button type="button" data-command="SHARE_DESIGN">Copy design link</button></div></div></details>
+    </div>
+  </aside>
+
+  <nav class="designer-mobile-toolbar" aria-label="Mobile design tools"><button type="button" id="openMobileControls">Design controls</button><button type="button" data-command="RESET_CAMERA">Reset view</button></nav>
+  <div class="designer-sheet-backdrop" id="sheetBackdrop" hidden></div>
+</main>
+<script src="../assets/js/site.js"></script>
+<script src="../assets/js/designer-page.js"></script>
+</body>
+</html>

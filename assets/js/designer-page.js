@@ -1,0 +1,115 @@
+(() => {
+  const frame = document.getElementById('pool-designer-frame');
+  const loading = document.getElementById('designerLoading');
+  const error = document.getElementById('designerError');
+  const status = document.getElementById('controlStatus');
+  const controls = document.getElementById('designerControls');
+  const accordion = document.getElementById('designerAccordion');
+  const targetOrigin = window.location.origin;
+  let ready = false;
+  let state = {};
+
+  function sendDesignerCommand(type, payload = {}) {
+    if (!frame?.contentWindow) return;
+    frame.contentWindow.postMessage({ source: 'atelier3d-controls', type, payload }, targetOrigin);
+  }
+  window.sendDesignerCommand = sendDesignerCommand;
+
+  function numericPayload(group) {
+    const payload = {};
+    document.querySelectorAll(`[data-group="${group}"]`).forEach(input => payload[input.dataset.key] = Number(input.value));
+    return payload;
+  }
+  function setOutput(key, value, suffix = ' m') {
+    const out = document.querySelector(`[data-output="${key}"]`);
+    if (!out || value == null) return;
+    out.textContent = key === 'stepCount' ? String(value) : `${Number(value).toFixed(key === 'stepDepth' ? 2 : 1)}${suffix}`;
+  }
+
+  document.querySelectorAll('[data-group]').forEach(input => {
+    input.addEventListener('input', () => {
+      const map = { length:'length', width:'width', shallowDepth:'shallowDepth', deepDepth:'deepDepth', count:'stepCount', depth:'stepDepth', spaWidth:'spaWidth', spaLength:'spaLength', height:'spaHeight' };
+      setOutput(map[input.dataset.key] || input.dataset.key, input.value);
+    });
+    input.addEventListener('change', () => {
+      const group = input.dataset.group;
+      if (group === 'poolDimensions') sendDesignerCommand('SET_POOL_DIMENSIONS', numericPayload(group));
+      if (group === 'spa') sendDesignerCommand('UPDATE_SPA', numericPayload(group));
+      if (group === 'steps') sendDesignerCommand('UPDATE_STEPS', numericPayload(group));
+    });
+  });
+
+  document.querySelectorAll('[data-command]').forEach(el => {
+    if (el.dataset.group) return;
+    const eventName = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'click';
+    el.addEventListener(eventName, async () => {
+      const type = el.dataset.command;
+      let payload = {};
+      if (el.dataset.value != null) payload.value = el.dataset.value;
+      if (el.dataset.key) payload[el.dataset.key] = el.type === 'checkbox' ? el.checked : el.value;
+      if (type === 'SHARE_DESIGN') {
+        try { await navigator.clipboard.writeText(window.location.href); status.textContent = 'Design link copied'; } catch (_) { status.textContent = 'Copy unavailable'; }
+        return;
+      }
+      sendDesignerCommand(type, payload);
+    });
+  });
+
+  accordion?.querySelectorAll('details').forEach(item => item.addEventListener('toggle', () => {
+    if (!item.open) return;
+    accordion.querySelectorAll('details').forEach(other => { if (other !== item) other.open = false; });
+  }));
+
+  document.getElementById('panelCollapse')?.addEventListener('click', () => {
+    controls.classList.toggle('is-collapsed');
+    document.querySelector('.designer-workspace').style.gridTemplateColumns = controls.classList.contains('is-collapsed') ? '220px minmax(0,1fr) 52px' : '';
+  });
+
+  const backdrop = document.getElementById('sheetBackdrop');
+  const setSheet = open => { controls.classList.toggle('sheet-open', open); backdrop.hidden = !open; backdrop.classList.toggle('is-open', open); };
+  document.getElementById('openMobileControls')?.addEventListener('click', () => setSheet(true));
+  backdrop?.addEventListener('click', () => setSheet(false));
+
+  function updateDesignerControls(next = {}) {
+    state = next;
+    const p = next.pool || next.poolParams || {};
+    const s = next.spa || {};
+    document.querySelector('[data-summary="shape"]').textContent = p.shape || '—';
+    document.querySelector('[data-summary="size"]').textContent = p.length && p.width ? `${Number(p.length).toFixed(1)} × ${Number(p.width).toFixed(1)} m` : '—';
+    document.querySelector('[data-summary="depth"]').textContent = p.shallow != null && p.deep != null ? `${Number(p.shallow).toFixed(1)}–${Number(p.deep).toFixed(1)} m` : '—';
+    document.querySelector('[data-summary="spa"]').textContent = s.enabled ? (s.shape || 'Enabled') : 'Off';
+    const values = { length:p.length, width:p.width, shallowDepth:p.shallow, deepDepth:p.deep, spaWidth:s.width, spaLength:s.length, spaHeight:s.height, stepCount:p.stepCount, stepDepth:p.stepDepth, stepWidth:p.stepWidth };
+    Object.entries(values).forEach(([key,value]) => {
+      if (value == null) return;
+      const input = document.querySelector(`[data-key="${key}"]`) || document.querySelector(`[data-output="${key}"]`)?.parentElement?.querySelector('input');
+      if (input) input.value = value;
+      setOutput(key, value);
+    });
+  }
+
+  window.addEventListener('message', event => {
+    if (event.source !== frame.contentWindow || event.origin !== targetOrigin) return;
+    const message = event.data || {};
+    if (message.source !== 'atelier3d-designer') return;
+    switch (message.type) {
+      case 'DESIGNER_READY': ready = true; loading?.classList.add('is-ready'); status.textContent = 'Connected'; sendDesignerCommand('REQUEST_DESIGN_STATE'); break;
+      case 'DESIGN_STATE_CHANGED': updateDesignerControls(message.payload); status.textContent = 'Saved in model'; break;
+      case 'LOADING_STARTED': status.textContent = 'Updating…'; break;
+      case 'LOADING_COMPLETE': status.textContent = 'Connected'; break;
+      case 'DESIGN_ERROR': status.textContent = 'Update failed'; console.error(message.payload); break;
+    }
+  });
+
+  frame?.addEventListener('load', () => setTimeout(() => { if (!ready) sendDesignerCommand('REQUEST_DESIGN_STATE'); }, 500));
+  frame?.addEventListener('error', () => { error.hidden = false; loading.hidden = true; });
+  setTimeout(() => { if (!ready) error.hidden = false; }, 15000);
+
+  let previousScrollY = window.scrollY;
+  const header = document.querySelector('.site-header');
+  const reveal = document.querySelector('.designer-header-reveal');
+  const showHeader = () => { header?.classList.remove('designer-header-hidden'); document.body.classList.remove('header-released'); };
+  const hideHeader = () => { if (!document.querySelector('.main-nav.open')) { header?.classList.add('designer-header-hidden'); document.body.classList.add('header-released'); } };
+  window.addEventListener('scroll', () => { const y = window.scrollY; if (y < 30) showHeader(); else if (y > previousScrollY && y > 70) hideHeader(); else if (y < previousScrollY) showHeader(); previousScrollY = y; }, { passive:true });
+  reveal?.addEventListener('pointerenter', showHeader);
+  header?.addEventListener('focusin', showHeader);
+})();
