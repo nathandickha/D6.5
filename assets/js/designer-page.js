@@ -7,6 +7,8 @@
   const accordion = document.getElementById('designerAccordion');
   const targetOrigin = window.location.origin;
   let ready = false;
+  let loadAttempted = false;
+  let loadFailureTimer = 0;
   let state = {};
 
   function sendDesignerCommand(type, payload = {}) {
@@ -92,7 +94,37 @@
     const message = event.data || {};
     if (message.source !== 'atelier3d-designer') return;
     switch (message.type) {
-      case 'DESIGNER_READY': ready = true; loading?.classList.add('is-ready'); status.textContent = 'Connected'; sendDesignerCommand('REQUEST_DESIGN_STATE'); requestAnimationFrame(() => updateRenderPause(false)); break;
+      case 'DESIGN_LOADING_STARTED':
+        loadAttempted = true;
+        ready = false;
+        error.hidden = true;
+        loading.hidden = false;
+        loading.classList.remove('is-ready');
+        status.textContent = 'Loading designer…';
+        clearTimeout(loadFailureTimer);
+        loadFailureTimer = window.setTimeout(() => {
+          if (loadAttempted && !ready) {
+            error.hidden = false;
+            loading.hidden = true;
+          }
+        }, 30000);
+        break;
+      case 'DESIGNER_READY':
+        ready = true;
+        clearTimeout(loadFailureTimer);
+        loading?.classList.add('is-ready');
+        status.textContent = 'Connected';
+        sendDesignerCommand('REQUEST_DESIGN_STATE');
+        requestAnimationFrame(() => updateRenderPause(false));
+        break;
+      case 'DESIGN_LOAD_FAILED':
+        clearTimeout(loadFailureTimer);
+        if (loadAttempted) {
+          error.hidden = false;
+          loading.hidden = true;
+        }
+        status.textContent = 'Designer failed to load';
+        break;
       case 'DESIGN_STATE_CHANGED': updateDesignerControls(message.payload); status.textContent = 'Saved in model'; break;
       case 'LOADING_STARTED': status.textContent = 'Updating…'; break;
       case 'LOADING_COMPLETE': status.textContent = 'Connected'; break;
@@ -100,9 +132,18 @@
     }
   });
 
-  frame?.addEventListener('load', () => setTimeout(() => { if (!ready) sendDesignerCommand('REQUEST_DESIGN_STATE'); }, 500));
-  frame?.addEventListener('error', () => { error.hidden = false; loading.hidden = true; });
-  setTimeout(() => { if (!ready) error.hidden = false; }, 15000);
+  // The iframe initially displays the starter-pool chooser, which is a valid
+  // idle state. Do not show loading or failure UI until a starter pool is chosen.
+  frame?.addEventListener('load', () => {
+    error.hidden = true;
+    if (!loadAttempted) loading.hidden = true;
+  });
+  frame?.addEventListener('error', () => {
+    if (!loadAttempted) return;
+    clearTimeout(loadFailureTimer);
+    error.hidden = false;
+    loading.hidden = true;
+  });
 
   let previousScrollY = window.scrollY;
   let scrollFrame = 0;
