@@ -80,6 +80,8 @@
     document.querySelector('[data-summary="size"]').textContent = p.length && p.width ? `${Number(p.length).toFixed(1)} × ${Number(p.width).toFixed(1)} m` : '—';
     document.querySelector('[data-summary="depth"]').textContent = p.shallow != null && p.deep != null ? `${Number(p.shallow).toFixed(1)}–${Number(p.deep).toFixed(1)} m` : '—';
     document.querySelector('[data-summary="spa"]').textContent = s.enabled ? (s.shape || 'Enabled') : 'Off';
+    const raisedToggle = document.querySelector('[data-command="SET_POOL_RAISED"][data-key="raised"]');
+    if (raisedToggle) raisedToggle.checked = !!p.raised;
     const values = { length:p.length, width:p.width, shallowDepth:p.shallow, deepDepth:p.deep, spaWidth:s.width, spaLength:s.length, spaHeight:s.height, stepCount:p.stepCount, stepDepth:p.stepDepth, stepWidth:p.stepWidth };
     Object.entries(values).forEach(([key,value]) => {
       if (value == null) return;
