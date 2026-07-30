@@ -720,6 +720,13 @@ function setupStarterPresetScreen() {
 
     card.addEventListener("click", async () => {
       if (appBootPromise) return;
+      if (window.parent !== window) {
+        window.parent.postMessage({
+          source: "atelier3d-designer",
+          type: "DESIGN_LOADING_STARTED",
+          payload: { presetId: preset.id }
+        }, window.location.origin);
+      }
       setStarterBusy(card, true);
       try {
         appBootPromise = preloadEditorModule().then(async ({ PoolApp }) => {
@@ -735,9 +742,15 @@ function setupStarterPresetScreen() {
         await appBootPromise;
       } catch (err) {
         console.error("[PoolApp] Failed to start 3D editor", err);
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            source: "atelier3d-designer",
+            type: "DESIGN_LOAD_FAILED",
+            payload: { presetId: preset.id, message: err?.message || "Designer failed to load" }
+          }, window.location.origin);
+        }
         appBootPromise = null;
         setStarterBusy(card, false);
-        alert("The 3D editor failed to load. Check the console for details.");
       }
     });
 
