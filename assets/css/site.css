@@ -349,3 +349,12 @@ body:not(.home-page){
 .pool-designer-page .tile-swatch-grid button { min-height:40px; }
 .pool-designer-page .tile-swatch-grid button.is-selected { border-color:#315f76; background:#edf3f5; box-shadow:inset 0 0 0 1px #315f76; }
 
+
+/* Editable dimension values and conditional raised-pool height */
+.pool-designer-page .control-label-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pool-designer-page .dimension-value-input{width:64px;height:25px;border:1px solid transparent;background:transparent;padding:2px 4px;text-align:right;font:inherit;font-size:10px;color:#252525;text-transform:none;letter-spacing:0;border-radius:2px}
+.pool-designer-page .dimension-value-input:hover{border-color:#d3d1cc;background:rgba(255,255,255,.72)}
+.pool-designer-page .dimension-value-input:focus{border-color:#315f76;background:#fff;outline:1px solid #315f76;outline-offset:1px}
+.pool-designer-page .dimension-value-input::-webkit-inner-spin-button{opacity:.45}
+.pool-designer-page .conditional-control[hidden]{display:none!important}
+.pool-designer-page .conditional-control{display:grid;gap:6px;margin-top:-5px;padding:8px 0 2px 0;border-top:1px solid #e5e3df}

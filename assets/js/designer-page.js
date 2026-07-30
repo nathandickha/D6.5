@@ -22,10 +22,36 @@
     document.querySelectorAll(`[data-group="${group}"]`).forEach(input => payload[input.dataset.key] = Number(input.value));
     return payload;
   }
-  function setOutput(key, value, suffix = ' m') {
-    const out = document.querySelector(`[data-output="${key}"]`);
-    if (!out || value == null) return;
-    out.textContent = key === 'stepCount' ? String(value) : `${Number(value).toFixed(key === 'stepDepth' ? 2 : 1)}${suffix}`;
+  function setOutput(key, value) {
+    if (value == null || !Number.isFinite(Number(value))) return;
+    const editor = document.querySelector(`[data-number-for="${key}"]`);
+    if (!editor || editor === document.activeElement) return;
+    const decimals = key === 'stepCount' ? 0 : (Number(editor.step) < 0.1 ? 2 : 1);
+    editor.value = Number(value).toFixed(decimals);
+  }
+
+  function rangeForDisplayKey(key) {
+    const map = {
+      length: ['poolDimensions', 'length'],
+      width: ['poolDimensions', 'width'],
+      shallowDepth: ['poolDimensions', 'shallowDepth'],
+      deepDepth: ['poolDimensions', 'deepDepth'],
+      poolHeight: ['poolHeight', 'height'],
+      spaWidth: ['spa', 'width'],
+      spaLength: ['spa', 'length'],
+      spaHeight: ['spa', 'height'],
+      stepCount: ['steps', 'count'],
+      stepDepth: ['steps', 'depth'],
+      stepWidth: ['steps', 'width']
+    };
+    const entry = map[key];
+    return entry ? document.querySelector(`[data-group="${entry[0]}"][data-key="${entry[1]}"]`) : null;
+  }
+
+  function clampToRange(input, value) {
+    const min = input.min === '' ? -Infinity : Number(input.min);
+    const max = input.max === '' ? Infinity : Number(input.max);
+    return Math.min(max, Math.max(min, Number(value)));
   }
 
   document.querySelectorAll('[data-group]').forEach(input => {
@@ -36,25 +62,54 @@
     });
 
     input.addEventListener('input', () => {
-      const map = { length:'length', width:'width', shallowDepth:'shallowDepth', deepDepth:'deepDepth', count:'stepCount', depth:'stepDepth', spaWidth:'spaWidth', spaLength:'spaLength', height:'spaHeight' };
-      setOutput(map[input.dataset.key] || input.dataset.key, input.value);
+      const map = {
+        length:'length', width:'width', shallowDepth:'shallowDepth', deepDepth:'deepDepth',
+        count:'stepCount', depth:'stepDepth', height: group === 'poolHeight' ? 'poolHeight' : 'spaHeight'
+      };
+      if (group === 'spa' && input.dataset.key === 'width') setOutput('spaWidth', input.value);
+      else if (group === 'spa' && input.dataset.key === 'length') setOutput('spaLength', input.value);
+      else setOutput(map[input.dataset.key] || input.dataset.key, input.value);
 
-      // Pool dimensions use the designer's existing live-preview pipeline while
-      // the range thumb is moving. The accurate geometry rebuild happens on
-      // release/change, matching direct wall-handle dragging in the model.
-      if (group === 'poolDimensions') {
-        sendDesignerCommand('PREVIEW_POOL_DIMENSIONS', numericPayload(group));
-      }
+      if (group === 'poolDimensions') sendDesignerCommand('PREVIEW_POOL_DIMENSIONS', numericPayload(group));
+      if (group === 'spa') sendDesignerCommand('PREVIEW_SPA', numericPayload(group));
+      if (group === 'poolHeight') sendDesignerCommand('PREVIEW_POOL_HEIGHT', numericPayload(group));
     });
 
     input.addEventListener('change', () => {
       if (group === 'poolDimensions') sendDesignerCommand('SET_POOL_DIMENSIONS', numericPayload(group));
       if (group === 'spa') sendDesignerCommand('UPDATE_SPA', numericPayload(group));
       if (group === 'steps') sendDesignerCommand('UPDATE_STEPS', numericPayload(group));
+      if (group === 'poolHeight') sendDesignerCommand('SET_POOL_HEIGHT', numericPayload(group));
     });
 
     input.addEventListener('pointercancel', () => {
       if (group === 'poolDimensions') sendDesignerCommand('SET_POOL_DIMENSIONS', numericPayload(group));
+      if (group === 'spa') sendDesignerCommand('UPDATE_SPA', numericPayload(group));
+      if (group === 'poolHeight') sendDesignerCommand('SET_POOL_HEIGHT', numericPayload(group));
+    });
+  });
+
+  document.querySelectorAll('[data-number-for]').forEach(editor => {
+    const key = editor.dataset.numberFor;
+    const range = rangeForDisplayKey(key);
+    if (!range) return;
+
+    const applyManualValue = (commit = false) => {
+      if (editor.value === '' || !Number.isFinite(Number(editor.value))) return;
+      const value = clampToRange(range, editor.value);
+      editor.value = String(value);
+      range.value = String(value);
+      range.dispatchEvent(new Event(commit ? 'change' : 'input', { bubbles: true }));
+    };
+
+    editor.addEventListener('input', () => applyManualValue(false));
+    editor.addEventListener('change', () => applyManualValue(true));
+    editor.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applyManualValue(true);
+        editor.blur();
+      }
     });
   });
 
@@ -65,6 +120,10 @@
     const stateLabel = button.querySelector('[data-toggle-state]');
     if (stateLabel) stateLabel.textContent = '';
     button.setAttribute('aria-label', `${button.querySelector('span')?.textContent || 'Option'}: ${active ? 'On' : 'Off'}`);
+    if (button.matches('[data-command="SET_POOL_RAISED"]')) {
+      const heightControl = document.getElementById('raisedPoolHeightControl');
+      if (heightControl) heightControl.hidden = !active;
+    }
   }
 
   document.querySelectorAll('[data-command]').forEach(el => {
@@ -169,11 +228,16 @@
     document.querySelectorAll('[data-command="SET_INTERIOR_TILE"][data-value]').forEach(button => {
       button.classList.toggle('is-selected', String(button.dataset.value || '').toLowerCase() === selectedTile);
     });
-    const values = { length:p.length, width:p.width, shallowDepth:p.shallow, deepDepth:p.deep, spaWidth:s.width, spaLength:s.length, spaHeight:s.height, stepCount:p.stepCount, stepDepth:p.stepDepth, stepWidth:p.stepWidth };
+    const values = {
+      length:p.length, width:p.width, shallowDepth:p.shallow, deepDepth:p.deep,
+      poolHeight:p.poolElevation ?? 0.7,
+      spaWidth:s.width, spaLength:s.length, spaHeight:s.height,
+      stepCount:p.stepCount, stepDepth:p.stepDepth, stepWidth:p.stepWidth
+    };
     Object.entries(values).forEach(([key,value]) => {
       if (value == null) return;
-      const input = document.querySelector(`[data-key="${key}"]`) || document.querySelector(`[data-output="${key}"]`)?.parentElement?.querySelector('input');
-      if (input) input.value = value;
+      const range = rangeForDisplayKey(key);
+      if (range && range !== document.activeElement) range.value = value;
       setOutput(key, value);
     });
   }

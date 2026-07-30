@@ -43,19 +43,22 @@
       <details id="poolControlsSection" open><summary>Pool</summary><div class="control-content">
         <label>Pool shape<select data-command="SET_POOL_SHAPE" data-key="shape"><option value="rectangular">Rectangle</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="L">L-shape</option><option value="freeform">Freeform</option></select></label>
         <button type="button" class="control-pill-toggle raised-pool-control" data-command="SET_POOL_RAISED" data-key="raised" data-toggle-pill aria-pressed="false"><span>Raised pool</span><b data-toggle-state aria-hidden="true"></b></button>
-        <label>Length <output data-output="length">8.0 m</output><input type="range" min="3" max="15" step="0.1" value="8" data-group="poolDimensions" data-key="length"></label>
-        <label>Width <output data-output="width">4.0 m</output><input type="range" min="2" max="8" step="0.1" value="4" data-group="poolDimensions" data-key="width"></label>
-        <label>Shallow depth <output data-output="shallowDepth">1.2 m</output><input type="range" min="0.8" max="2" step="0.05" value="1.2" data-group="poolDimensions" data-key="shallowDepth"></label>
-        <label>Deep depth <output data-output="deepDepth">1.8 m</output><input type="range" min="1" max="3" step="0.05" value="1.8" data-group="poolDimensions" data-key="deepDepth"></label>
+        <div class="conditional-control" id="raisedPoolHeightControl" hidden>
+          <label><span class="control-label-row"><span>Height</span><input class="dimension-value-input" type="number" min="0.1" max="1.5" step="0.05" value="0.7" data-number-for="poolHeight" aria-label="Raised pool height in metres"></span><input type="range" min="0.1" max="1.5" step="0.05" value="0.7" data-group="poolHeight" data-key="height"></label>
+        </div>
+        <label><span class="control-label-row"><span>Length</span><input class="dimension-value-input" type="number" min="3" max="15" step="0.1" value="8" data-number-for="length" aria-label="Pool length in metres"></span><input type="range" min="3" max="15" step="0.1" value="8" data-group="poolDimensions" data-key="length"></label>
+        <label><span class="control-label-row"><span>Width</span><input class="dimension-value-input" type="number" min="2" max="8" step="0.1" value="4" data-number-for="width" aria-label="Pool width in metres"></span><input type="range" min="2" max="8" step="0.1" value="4" data-group="poolDimensions" data-key="width"></label>
+        <label><span class="control-label-row"><span>Shallow depth</span><input class="dimension-value-input" type="number" min="0.8" max="2" step="0.05" value="1.2" data-number-for="shallowDepth" aria-label="Shallow depth in metres"></span><input type="range" min="0.8" max="2" step="0.05" value="1.2" data-group="poolDimensions" data-key="shallowDepth"></label>
+        <label><span class="control-label-row"><span>Deep depth</span><input class="dimension-value-input" type="number" min="1" max="3" step="0.05" value="1.8" data-number-for="deepDepth" aria-label="Deep depth in metres"></span><input type="range" min="1" max="3" step="0.05" value="1.8" data-group="poolDimensions" data-key="deepDepth"></label>
         <div class="control-button-row"><button type="button" data-command="RESET_DIMENSIONS">Reset dimensions</button><button type="button" class="danger" data-command="RESET_DESIGN">Reset design</button></div>
       </div></details>
 
       <details id="spaControlsSection"><summary>Spa</summary><div class="control-content">
         <button type="button" class="control-pill-toggle" data-command="UPDATE_SPA" data-key="enabled" data-toggle-pill aria-pressed="false"><span>Spa enabled</span><b data-toggle-state aria-hidden="true"></b></button>
         <label>Spa shape<select data-command="UPDATE_SPA" data-key="shape"><option value="square">Rectangular</option><option value="circular">Circular</option></select></label>
-        <label>Width / diameter <output data-output="spaWidth">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="width"></label>
-        <label>Length <output data-output="spaLength">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="length"></label>
-        <label>Height above pool <output data-output="spaHeight">0.0 m</output><input type="range" min="-0.2" max="1.2" step="0.05" value="0" data-group="spa" data-key="height"></label>
+        <label><span class="control-label-row"><span>Width / diameter</span><input class="dimension-value-input" type="number" min="1" max="5" step="0.05" value="2" data-number-for="spaWidth" aria-label="Spa width or diameter in metres"></span><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="width"></label>
+        <label><span class="control-label-row"><span>Length</span><input class="dimension-value-input" type="number" min="1" max="5" step="0.05" value="2" data-number-for="spaLength" aria-label="Spa length in metres"></span><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="length"></label>
+        <label><span class="control-label-row"><span>Height above pool</span><input class="dimension-value-input" type="number" min="-0.2" max="1.2" step="0.05" value="0" data-number-for="spaHeight" aria-label="Spa height above pool in metres"></span><input type="range" min="-0.2" max="1.2" step="0.05" value="0" data-group="spa" data-key="height"></label>
         <p class="control-note">Position, snapping and channel geometry remain editable directly in the 3D scene.</p>
       </div></details>
 
@@ -65,9 +68,9 @@
         <label>Step style<select data-command="UPDATE_STEPS" data-key="style"><option value="rectangle">Straight</option><option value="diagonal">Corner</option><option value="circular">Circular corner</option><option value="radius">Radius corner</option></select></label>
         <label>Wall<select data-command="UPDATE_STEPS" data-key="wall"><option value="west">West / shallow end</option><option value="east">East / deep end</option><option value="north">North / top</option><option value="south">South / bottom</option></select></label>
         <label>Position<select data-command="UPDATE_STEPS" data-key="position"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
-        <label>Number of steps <output data-output="stepCount">3</output><input type="range" min="1" max="8" step="1" value="3" data-group="steps" data-key="count"></label>
-        <label>Step depth <output data-output="stepDepth">0.20 m</output><input type="range" min="0.1" max="0.5" step="0.01" value="0.2" data-group="steps" data-key="depth"></label>
-        <label>Step width <output data-output="stepWidth">0.90 m</output><input type="range" min="0.3" max="5" step="0.05" value="0.9" data-group="steps" data-key="width"></label>
+        <label><span class="control-label-row"><span>Number of steps</span><input class="dimension-value-input" type="number" min="1" max="8" step="1" value="3" data-number-for="stepCount" aria-label="Number of steps"></span><input type="range" min="1" max="8" step="1" value="3" data-group="steps" data-key="count"></label>
+        <label><span class="control-label-row"><span>Step depth</span><input class="dimension-value-input" type="number" min="0.1" max="0.5" step="0.01" value="0.2" data-number-for="stepDepth" aria-label="Step depth in metres"></span><input type="range" min="0.1" max="0.5" step="0.01" value="0.2" data-group="steps" data-key="depth"></label>
+        <label><span class="control-label-row"><span>Step width</span><input class="dimension-value-input" type="number" min="0.3" max="5" step="0.05" value="0.9" data-number-for="stepWidth" aria-label="Step width in metres"></span><input type="range" min="0.3" max="5" step="0.05" value="0.9" data-group="steps" data-key="width"></label>
       </div></details>
 
       <details id="benchesControlsSection"><summary>Benches</summary><div class="control-content">
@@ -127,6 +130,6 @@
 </div><div class="footer-bottom"><span>© 2026 Atelier 3D. All rights reserved.</span><span><a href="../privacy-policy/index.html">Privacy</a>&nbsp;&nbsp;&nbsp; <a href="../terms-and-conditions/index.html">Terms</a>&nbsp;&nbsp;&nbsp; <a href="../about/index.html">About</a></span></div></div></footer>
 
 <script src="../assets/js/site.js"></script>
-<script src="../assets/js/designer-page.js?v=20260730-live-dimensions"></script>
+<script src="../assets/js/designer-page.js?v=20260730-live-spa-height"></script>
 </body>
 </html>
