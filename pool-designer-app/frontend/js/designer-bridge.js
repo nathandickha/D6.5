@@ -31,6 +31,7 @@ async function apply(type, payload={}) {
   post('LOADING_STARTED', { type });
   switch(type) {
     case 'REQUEST_DESIGN_STATE': changed(); break;
+    case 'SET_RENDER_PAUSED': app._renderPaused = !!payload.paused; break;
     case 'SET_STARTER_POOL': { const preset = starterPresets.find(x => x.id === payload.id); if (preset) await app.applyStarterPreset(preset); break; }
     case 'SET_POOL_SHAPE': input('shape', payload.shape); break;
     case 'SET_POOL_DIMENSIONS':

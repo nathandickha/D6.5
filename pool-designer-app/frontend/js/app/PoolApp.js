@@ -8847,6 +8847,14 @@ setupPoolEditor() {
     if (this._disposed) return;
     this._animationFrameId = requestAnimationFrame(() => this.animate(true));
 
+    // The containing website temporarily pauses expensive WebGL work while the
+    // outer document is scrolling or the designer is outside the viewport.
+    // Keep the RAF alive so resuming is immediate, but skip simulation and render.
+    if (this._renderPaused) {
+      this.clock.getDelta();
+      return;
+    }
+
     // Clamp long frames (tab switching, DevTools pauses, shader compilation) so the
     // water simulation cannot jump forward or receive an unstable time step.
     const rawDelta = this.clock.getDelta();

@@ -727,6 +727,9 @@ function setupStarterPresetScreen() {
           window.poolApp = app;
           await app.start({ starterPreset: preset });
           overlay.classList.add("hidden");
+          if (new URLSearchParams(window.location.search).get("embedded") === "1") {
+            connectDesignerBridge(app, STARTER_POOL_PRESETS);
+          }
           return app;
         });
         await appBootPromise;
@@ -749,24 +752,8 @@ preloadPavingAssets();
 preloadWaterAssets();
 setupStarterPresetScreen();
 
-async function autoStartEmbeddedDesigner() {
-  const query = new URLSearchParams(window.location.search);
-  if (query.get("embedded") !== "1") return;
-  const requested = query.get("starter") || "rectangle";
-  const preset = STARTER_POOL_PRESETS.find((item) => item.id === requested) || STARTER_POOL_PRESETS[0];
-  try {
-    const { PoolApp } = await preloadEditorModule();
-    const app = new PoolApp();
-    window.poolApp = app;
-    appBootPromise = Promise.resolve(app);
-    await app.start({ starterPreset: preset });
-    document.getElementById("starterPresetOverlay")?.classList.add("hidden");
-    connectDesignerBridge(app, STARTER_POOL_PRESETS);
-  } catch (err) {
-    console.error("[PoolApp] Embedded auto-start failed", err);
-  }
-}
+// Embedded mode now waits for an explicit starter-card click.
+// The selected preset is the only action that starts the Three.js editor.
 
-autoStartEmbeddedDesigner();
 scheduleEditorPreload();
 preloadSecondaryVisualAssets();
