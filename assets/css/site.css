@@ -252,3 +252,26 @@ body:not(.home-page){
     height: 100%;
   }
 }
+
+/* Raised-pool control in external designer panel */
+.pool-designer-page .raised-pool-control {
+  align-items: center;
+  border-top: 1px solid var(--line, #d9d9d5);
+  border-bottom: 1px solid var(--line, #d9d9d5);
+  margin: 8px 0 12px;
+  padding: 12px 0;
+}
+.pool-designer-page .raised-pool-control > span {
+  display: grid;
+  gap: 2px;
+}
+.pool-designer-page .raised-pool-control strong {
+  color: #1f2528;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pool-designer-page .raised-pool-control small {
+  color: #737976;
+  font-size: 10px;
+  line-height: 1.3;
+}

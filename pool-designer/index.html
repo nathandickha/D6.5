@@ -35,13 +35,14 @@
   <aside class="designer-controls" id="designerControls" aria-label="Design controls">
     <div class="designer-controls-head"><button class="panel-collapse" id="panelCollapse" type="button" aria-label="Collapse design controls">‹</button><div><strong>Design controls</strong><small id="controlStatus">Connecting…</small></div></div>
     <div class="designer-accordion" id="designerAccordion">
-      <details open><summary>Pool</summary><div class="control-content">
+      <details id="poolControlsSection" open><summary>Pool</summary><div class="control-content">
         <label>Starter pool<select data-command="SET_STARTER_POOL" data-key="id"><option value="rectangle">Rectangle</option><option value="rectangle-square-spa">Rectangle + square spa</option><option value="rectangle-circular-spa">Rectangle + circular spa</option><option value="l-shape">L-shape</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="lap-pool">Lap pool</option><option value="plunge-pool">Plunge pool</option></select></label>
         <label>Pool shape<select data-command="SET_POOL_SHAPE" data-key="shape"><option value="rectangular">Rectangle</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="L">L-shape</option><option value="freeform">Freeform</option></select></label>
         <label>Length <output data-output="length">8.0 m</output><input type="range" min="3" max="15" step="0.1" value="8" data-group="poolDimensions" data-key="length"></label>
         <label>Width <output data-output="width">4.0 m</output><input type="range" min="2" max="8" step="0.1" value="4" data-group="poolDimensions" data-key="width"></label>
         <label>Shallow depth <output data-output="shallowDepth">1.2 m</output><input type="range" min="0.8" max="2" step="0.05" value="1.2" data-group="poolDimensions" data-key="shallowDepth"></label>
         <label>Deep depth <output data-output="deepDepth">1.8 m</output><input type="range" min="1" max="3" step="0.05" value="1.8" data-group="poolDimensions" data-key="deepDepth"></label>
+        <label class="toggle-line raised-pool-control"><span><strong>Raised pool</strong><small>Lift pool assembly 0.7 m</small></span><input type="checkbox" data-command="SET_POOL_RAISED" data-key="raised" aria-label="Raise pool 0.7 metres"></label>
         <div class="control-button-row"><button type="button" data-command="RESET_DIMENSIONS">Reset dimensions</button><button type="button" class="danger" data-command="RESET_DESIGN">Reset design</button></div>
       </div></details>
 
@@ -75,19 +76,6 @@
         <button type="button" data-command="SET_INTERIOR_TILE" data-value="Antique Opal"><i style="background:#b8ac96"></i>Antique Opal</button>
       </div></div></details>
 
-      <details><summary>Waterline Tile</summary><div class="control-content"><p class="control-note">Uses the same real tile library as the interior finish in this version of the designer.</p><div class="swatch-grid compact">
-        <button type="button" data-command="SET_WATERLINE_TILE" data-value="Blue"><i style="background:#4b849a"></i>Blue</button><button type="button" data-command="SET_WATERLINE_TILE" data-value="White"><i style="background:#e8e8e4"></i>White</button><button type="button" data-command="SET_WATERLINE_TILE" data-value="Black"><i style="background:#242626"></i>Black</button><button type="button" data-command="SET_WATERLINE_TILE" data-value="Antique Opal"><i style="background:#b8ac96"></i>Opal</button>
-      </div></div></details>
-
-      <details><summary>Coping</summary><div class="control-content"><div class="swatch-grid compact"><button type="button" data-command="SET_COPING" data-value="stone"><i class="stone"></i>Embedded stone</button><button type="button" data-command="SET_COPING" data-value="travertine"><i class="travertine"></i>Travertine</button></div></div></details>
-      <details><summary>Paving</summary><div class="control-content"><div class="swatch-grid compact"><button type="button" data-command="SET_PAVING" data-value="stone"><i class="stone"></i>Embedded stone</button><button type="button" data-command="SET_PAVING" data-value="travertine"><i class="travertine"></i>Travertine</button></div></div></details>
-
-      <details><summary>Environment</summary><div class="control-content">
-        <label>Camera view<select data-command="SET_CAMERA_VIEW" data-key="view"><option value="perspective">Perspective</option><option value="top">Top view</option><option value="section">Section view</option></select></label>
-        <div class="control-button-row"><button type="button" data-command="RESET_CAMERA">Reset camera</button></div>
-        <p class="control-note">Lighting and water appearance continue to use the designer’s calibrated scene defaults.</p>
-      </div></details>
-
       <details><summary>Save and Share</summary><div class="control-content"><div class="control-button-row vertical"><button type="button" data-command="SAVE_SCREENSHOT">Save screenshot</button><button type="button" data-command="SHARE_DESIGN">Copy design link</button></div></div></details>
     </div>
   </aside>
@@ -115,6 +103,6 @@
 </div><div class="footer-bottom"><span>© 2026 Atelier 3D. All rights reserved.</span><span><a href="../privacy-policy/index.html">Privacy</a>&nbsp;&nbsp;&nbsp; <a href="../terms-and-conditions/index.html">Terms</a>&nbsp;&nbsp;&nbsp; <a href="../about/index.html">About</a></span></div></div></footer>
 
 <script src="../assets/js/site.js"></script>
-<script src="../assets/js/designer-page.js"></script>
+<script src="../assets/js/designer-page.js?v=20260730-2"></script>
 </body>
 </html>
