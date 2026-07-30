@@ -236,3 +236,19 @@ body:not(.home-page){
 .pool-designer-page .faq-section,.pool-designer-page .learn-section,.pool-designer-page .site-footer{position:relative;z-index:2}
 .pool-designer-page .faq-section{background:#faf9f7}
 .pool-designer-page .learn-section,.pool-designer-page .site-footer{background:#fff}
+
+/* Pool Designer: remove the embedded iframe scrollbar/gutter strip so the
+   Three.js viewport reaches the external controls panel edge. */
+@media (min-width: 761px) {
+  .pool-designer-page .designer-stage {
+    overflow: hidden;
+  }
+
+  .pool-designer-page .designer-stage iframe {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: calc(100% + 18px);
+    max-width: none;
+    height: 100%;
+  }
+}
