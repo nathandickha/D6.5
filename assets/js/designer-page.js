@@ -63,10 +63,53 @@
   const poolControlsSection = document.getElementById('poolControlsSection');
   if (poolControlsSection) poolControlsSection.open = true;
 
-  accordion?.querySelectorAll('details').forEach(item => item.addEventListener('toggle', () => {
-    if (!item.open) return;
-    accordion.querySelectorAll('details').forEach(other => { if (other !== item) other.open = false; });
-  }));
+  const controlTabs = [...document.querySelectorAll('[data-control-tab]')];
+  const controlPanels = [...document.querySelectorAll('[data-control-panel]')];
+  const lastOpenByPanel = new Map([['pool-spa', 'poolControlsSection']]);
+
+  function activateControlTab(tabName, focusTab = false) {
+    controlTabs.forEach(tab => {
+      const active = tab.dataset.controlTab === tabName;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', String(active));
+      if (active && focusTab) tab.focus();
+    });
+    controlPanels.forEach(panel => {
+      const active = panel.dataset.controlPanel === tabName;
+      panel.hidden = !active;
+      panel.classList.toggle('is-active', active);
+      if (active) {
+        const rememberedId = lastOpenByPanel.get(tabName);
+        const remembered = rememberedId ? panel.querySelector(`#${rememberedId}`) : null;
+        const first = panel.querySelector('details');
+        (remembered || first)?.setAttribute('open', '');
+      }
+    });
+  }
+
+  controlTabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => activateControlTab(tab.dataset.controlTab));
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      let nextIndex = index;
+      if (event.key === 'ArrowLeft') nextIndex = (index - 1 + controlTabs.length) % controlTabs.length;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % controlTabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = controlTabs.length - 1;
+      activateControlTab(controlTabs[nextIndex].dataset.controlTab, true);
+    });
+  });
+
+  controlPanels.forEach(panel => {
+    panel.querySelectorAll('details').forEach(item => item.addEventListener('toggle', () => {
+      if (!item.open) return;
+      if (item.id) lastOpenByPanel.set(panel.dataset.controlPanel, item.id);
+      panel.querySelectorAll('details').forEach(other => { if (other !== item) other.open = false; });
+    }));
+  });
+
+  activateControlTab('pool-spa');
 
   document.getElementById('panelCollapse')?.addEventListener('click', () => {
     controls.classList.toggle('is-collapsed');

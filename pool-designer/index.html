@@ -34,7 +34,12 @@
 
   <aside class="designer-controls" id="designerControls" aria-label="Design controls">
     <div class="designer-controls-head"><button class="panel-collapse" id="panelCollapse" type="button" aria-label="Collapse design controls">‹</button><div><strong>Design controls</strong><small id="controlStatus">Connecting…</small></div></div>
+    <div class="designer-control-tabs" role="tablist" aria-label="Design control categories">
+      <button class="designer-control-tab is-active" id="poolSpaTab" type="button" role="tab" aria-selected="true" aria-controls="poolSpaControls" data-control-tab="pool-spa">Pool &amp; Spa</button>
+      <button class="designer-control-tab" id="featuresFinishesTab" type="button" role="tab" aria-selected="false" aria-controls="featuresFinishesControls" data-control-tab="features-finishes">Features &amp; Finishes</button>
+    </div>
     <div class="designer-accordion" id="designerAccordion">
+      <div class="designer-tab-panel is-active" id="poolSpaControls" role="tabpanel" aria-labelledby="poolSpaTab" data-control-panel="pool-spa">
       <details id="poolControlsSection" open><summary>Pool</summary><div class="control-content">
         <label>Starter pool<select data-command="SET_STARTER_POOL" data-key="id"><option value="rectangle">Rectangle</option><option value="rectangle-square-spa">Rectangle + square spa</option><option value="rectangle-circular-spa">Rectangle + circular spa</option><option value="l-shape">L-shape</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="lap-pool">Lap pool</option><option value="plunge-pool">Plunge pool</option></select></label>
         <label>Pool shape<select data-command="SET_POOL_SHAPE" data-key="shape"><option value="rectangular">Rectangle</option><option value="oval">Oval</option><option value="kidney">Kidney</option><option value="L">L-shape</option><option value="freeform">Freeform</option></select></label>
@@ -46,7 +51,7 @@
         <div class="control-button-row"><button type="button" data-command="RESET_DIMENSIONS">Reset dimensions</button><button type="button" class="danger" data-command="RESET_DESIGN">Reset design</button></div>
       </div></details>
 
-      <details><summary>Spa</summary><div class="control-content">
+      <details id="spaControlsSection"><summary>Spa</summary><div class="control-content">
         <label class="toggle-line"><span>Spa enabled</span><input type="checkbox" data-command="UPDATE_SPA" data-key="enabled"></label>
         <label>Spa shape<select data-command="UPDATE_SPA" data-key="shape"><option value="square">Rectangular</option><option value="circular">Circular</option></select></label>
         <label>Width / diameter <output data-output="spaWidth">2.0 m</output><input type="range" min="1" max="5" step="0.05" value="2" data-group="spa" data-key="width"></label>
@@ -55,7 +60,9 @@
         <p class="control-note">Position, snapping and channel geometry remain editable directly in the 3D scene.</p>
       </div></details>
 
-      <details><summary>Steps</summary><div class="control-content">
+      </div>
+      <div class="designer-tab-panel" id="featuresFinishesControls" role="tabpanel" aria-labelledby="featuresFinishesTab" data-control-panel="features-finishes" hidden>
+      <details id="stepsControlsSection"><summary>Steps</summary><div class="control-content">
         <label>Step style<select data-command="UPDATE_STEPS" data-key="style"><option value="rectangle">Straight</option><option value="diagonal">Corner</option><option value="circular">Circular corner</option><option value="radius">Radius corner</option></select></label>
         <label>Wall<select data-command="UPDATE_STEPS" data-key="wall"><option value="west">West / shallow end</option><option value="east">East / deep end</option><option value="north">North / top</option><option value="south">South / bottom</option></select></label>
         <label>Position<select data-command="UPDATE_STEPS" data-key="position"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
@@ -64,19 +71,22 @@
         <label>Step width <output data-output="stepWidth">0.90 m</output><input type="range" min="0.3" max="5" step="0.05" value="0.9" data-group="steps" data-key="width"></label>
       </div></details>
 
-      <details><summary>Benches</summary><div class="control-content">
+      <details id="benchesControlsSection"><summary>Benches</summary><div class="control-content">
         <label>Step layout<select data-command="UPDATE_BENCH" data-key="mode"><option value="bench">Bench seat</option><option value="stepsOnly">Steps only</option></select></label>
         <p class="control-note">Bench seating is integrated with the current step system. Select a step in the model for advanced push/pull editing.</p>
       </div></details>
 
-      <details><summary>Interior Finish</summary><div class="control-content"><div class="swatch-grid">
+      <details id="interiorFinishControlsSection"><summary>Interior Finish</summary><div class="control-content"><div class="swatch-grid">
         <button type="button" data-command="SET_INTERIOR_TILE" data-value="Blue"><i style="background:#4b849a"></i>Blue</button>
         <button type="button" data-command="SET_INTERIOR_TILE" data-value="White"><i style="background:#e8e8e4"></i>White</button>
         <button type="button" data-command="SET_INTERIOR_TILE" data-value="Black"><i style="background:#242626"></i>Black</button>
         <button type="button" data-command="SET_INTERIOR_TILE" data-value="Antique Opal"><i style="background:#b8ac96"></i>Antique Opal</button>
       </div></div></details>
 
-      <details><summary>Save and Share</summary><div class="control-content"><div class="control-button-row vertical"><button type="button" data-command="SAVE_SCREENSHOT">Save screenshot</button><button type="button" data-command="SHARE_DESIGN">Copy design link</button></div></div></details>
+      </div>
+      <div class="designer-persistent-controls">
+      <details id="saveShareControlsSection"><summary>Save and Share</summary><div class="control-content"><div class="control-button-row vertical"><button type="button" data-command="SAVE_SCREENSHOT">Save screenshot</button><button type="button" data-command="SHARE_DESIGN">Copy design link</button></div></div></details>
+      </div>
     </div>
   </aside>
 
@@ -103,6 +113,6 @@
 </div><div class="footer-bottom"><span>© 2026 Atelier 3D. All rights reserved.</span><span><a href="../privacy-policy/index.html">Privacy</a>&nbsp;&nbsp;&nbsp; <a href="../terms-and-conditions/index.html">Terms</a>&nbsp;&nbsp;&nbsp; <a href="../about/index.html">About</a></span></div></div></footer>
 
 <script src="../assets/js/site.js"></script>
-<script src="../assets/js/designer-page.js?v=20260730-2"></script>
+<script src="../assets/js/designer-page.js?v=20260730-3"></script>
 </body>
 </html>

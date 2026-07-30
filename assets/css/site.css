@@ -275,3 +275,17 @@ body:not(.home-page){
   font-size: 10px;
   line-height: 1.3;
 }
+
+/* Pool Designer browser-style category tabs */
+.designer-controls.is-collapsed .designer-control-tabs{display:none}
+.designer-control-tabs{height:43px;display:grid;grid-template-columns:1fr 1fr;align-items:end;padding:7px 8px 0;background:rgba(239,238,234,.78);border-bottom:1px solid #cbc9c4;position:relative;z-index:2}
+.designer-control-tab{min-width:0;height:36px;padding:0 8px;border:1px solid transparent;border-bottom:0;background:transparent;color:#77736e;font-size:9px;font-weight:600;letter-spacing:.055em;text-transform:uppercase;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:5px 5px 0 0}
+.designer-control-tab:hover{color:#292827;background:rgba(255,255,255,.45)}
+.designer-control-tab.is-active{position:relative;color:#202020;background:rgba(250,249,247,.98);border-color:#cbc9c4}
+.designer-control-tab.is-active:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#faf9f7}
+.designer-control-tab:focus-visible{outline:2px solid #315f76;outline-offset:-3px}
+.designer-accordion{height:calc(100% - 101px)}
+.designer-tab-panel[hidden]{display:none!important}
+.designer-tab-panel.is-active{display:block}
+.designer-persistent-controls{border-top:1px solid #cbc9c4}
+@media(max-width:760px){.designer-control-tabs{position:sticky;top:0;z-index:4}.designer-accordion{height:calc(100% - 101px)}}
