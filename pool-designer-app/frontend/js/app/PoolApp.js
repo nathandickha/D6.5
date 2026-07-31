@@ -542,7 +542,7 @@ export class PoolApp {
       const dx = point.x - drag.startPoint.x;
       const signedDelta = drag.key === "right" ? dx : -dx;
       const rawLength = Math.max(minSize, drag.startLength + signedDelta * 2);
-      const nextLength = Math.round(rawLength / 0.05) * 0.05;
+      const nextLength = Math.round(rawLength / 0.1) * 0.1;
       if (Math.abs(nextLength - this.poolParams.length) > 1e-4) {
         this.poolParams.length = nextLength;
         this._markPoolParamDirty("length");
@@ -551,7 +551,7 @@ export class PoolApp {
       const dy = point.y - drag.startPoint.y;
       const signedDelta = drag.key === "top" ? dy : -dy;
       const rawWidth = Math.max(minSize, drag.startWidth + signedDelta * 2);
-      const nextWidth = Math.round(rawWidth / 0.05) * 0.05;
+      const nextWidth = Math.round(rawWidth / 0.1) * 0.1;
       if (Math.abs(nextWidth - this.poolParams.width) > 1e-4) {
         this.poolParams.width = nextWidth;
         this._markPoolParamDirty("width");
@@ -741,7 +741,7 @@ export class PoolApp {
     if (!point) return;
 
     const spaShape = this.spa.userData?.spaShape || this.getSelectedSpaShape();
-    const snap = (v) => Math.round(Math.max(0.5, v) / 0.05) * 0.05;
+    const snap = (v) => Math.round(Math.max(0.5, v) / 0.1) * 0.1;
 
     if (drag.key === "spaLeft" || drag.key === "spaRight") {
       const dx = point.x - drag.startPoint.x;
@@ -1058,7 +1058,7 @@ export class PoolApp {
     const profile = this._getSectionDimensionProfile();
     if (!profile) return;
 
-    const snap = (v, min = 0) => Math.round(Math.max(min, v) / 0.05) * 0.05;
+    const snap = (v, min = 0) => Math.round(Math.max(min, v) / 0.1) * 0.1;
     const maxDepth = 4.0;
 
     if (drag.key === "sectionShallow") {
@@ -8801,10 +8801,6 @@ setupPoolEditor() {
         }
 
         markDirty(id);
-        // Stream the current dimensions to the parent controls on every preview frame.
-        // This also covers direct 3D wall-handle drags because those handles update
-        // the same internal sliders/parameters.
-        this._notifyDesignerStateChanged?.();
       });
 
       // Change event (fires on release in many browsers) forces rebuild now
