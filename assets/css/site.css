@@ -358,3 +358,17 @@ body:not(.home-page){
 .pool-designer-page .dimension-value-input::-webkit-inner-spin-button{opacity:.45}
 .pool-designer-page .conditional-control[hidden]{display:none!important}
 .pool-designer-page .conditional-control{display:grid;gap:6px;margin-top:-5px;padding:8px 0 2px 0;border-top:1px solid #e5e3df}
+
+/* Four-tile product previews in the external Interior Finish controls. */
+.pool-designer-page .tile-swatch-grid i {
+  width:42px;
+  height:42px;
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+  border-color:rgba(20,20,20,.14);
+}
+.pool-designer-page .tile-swatch-grid button {
+  grid-template-columns:42px minmax(0,1fr);
+  min-height:54px;
+}
