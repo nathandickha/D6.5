@@ -102,15 +102,19 @@
     if (!range) return;
 
     const applyManualValue = (commit = false) => {
-      if (editor.value === '' || !Number.isFinite(Number(editor.value))) return;
-      const value = clampToRange(range, editor.value);
-      editor.value = String(value);
+      const raw = String(editor.value ?? '').trim();
+      // Keep partial decimal entry intact while typing (for example "5." or "-0.").
+      if (!commit && (raw === '' || raw === '-' || raw.endsWith('.'))) return;
+      if (!/^-?\d+(?:\.\d+)?$/.test(raw) || !Number.isFinite(Number(raw))) return;
+      const value = clampToRange(range, raw);
+      if (commit) editor.value = String(value);
       range.value = String(value);
       range.dispatchEvent(new Event(commit ? 'change' : 'input', { bubbles: true }));
     };
 
     editor.addEventListener('input', () => applyManualValue(false));
     editor.addEventListener('change', () => applyManualValue(true));
+    editor.addEventListener('blur', () => applyManualValue(true));
     editor.addEventListener('keydown', event => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -192,6 +196,23 @@
         if (remembered) remembered.setAttribute('open', '');
       }
     });
+  }
+
+  function focusModelControlSection(target) {
+    activateControlTab('pool-spa');
+    const poolSection = document.getElementById('poolControlsSection');
+    const spaSection = document.getElementById('spaControlsSection');
+    if (target === 'spa') {
+      if (poolSection) poolSection.open = false;
+      if (spaSection) spaSection.open = true;
+      lastOpenByPanel.set('pool-spa', 'spaControlsSection');
+      spaSection?.querySelector('summary')?.focus?.({ preventScroll: true });
+    } else {
+      if (spaSection) spaSection.open = false;
+      if (poolSection) poolSection.open = true;
+      lastOpenByPanel.set('pool-spa', 'poolControlsSection');
+      poolSection?.querySelector('summary')?.focus?.({ preventScroll: true });
+    }
   }
 
   controlTabs.forEach((tab, index) => {
@@ -297,6 +318,7 @@
         status.textContent = 'Designer failed to load';
         break;
       case 'DESIGN_STATE_CHANGED': updateDesignerControls(message.payload); status.textContent = 'Saved in model'; break;
+      case 'MODEL_INTERACTION': focusModelControlSection(message.payload?.target === 'spa' ? 'spa' : 'pool'); break;
       case 'LOADING_STARTED': status.textContent = 'Updating…'; break;
       case 'LOADING_COMPLETE': status.textContent = 'Connected'; break;
       case 'DESIGN_ERROR': status.textContent = 'Update failed'; console.error(message.payload); break;
