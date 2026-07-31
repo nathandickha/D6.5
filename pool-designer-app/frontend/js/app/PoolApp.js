@@ -5,7 +5,8 @@ import {
   updateGroundVoid,
   updatePoolWaterVoid,
   updateGrassForPool,
-  purgeDetachedSpaChannelArtifacts
+  purgeDetachedSpaChannelArtifacts,
+  getPoolPavingContours
 } from "../scene.js";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
@@ -6728,40 +6729,90 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     });
     if (stepBounds.isEmpty()) return;
 
-    const wall = steps[0]?.userData?.stepWall || this.poolGroup.userData?.stepWall || this.poolParams?.stepWall || 'west';
-    const target = { wall };
-    if (this.poolParams?.shape === 'L') target.edgeIndex = Number(this.poolParams?.lshapeStepWallIndex);
-    const frame = this._getStepWallFrameForTarget?.(target) || this._getBoxWallFrame?.(wall);
-    if (!frame) return;
+    const contours = getPoolPavingContours(this.poolGroup);
+    if (!contours?.inner?.length || contours.inner.length !== contours.outer.length) return;
 
+    const inner = contours.inner;
+    const outer = contours.outer;
+    const stepCenter = stepBounds.getCenter(new THREE.Vector3());
+
+    // Find the paving contour point nearest the entry steps, then take a
+    // contiguous section of the same contour in both directions. This uses the
+    // exact normal-paving outline, so oval, kidney and edited curves remain curved.
+    let centerIndex = 0;
+    let nearest = Infinity;
+    for (let i = 0; i < inner.length; i++) {
+      const dx = inner[i].x - stepCenter.x;
+      const dy = inner[i].y - stepCenter.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < nearest) { nearest = d2; centerIndex = i; }
+    }
+
+    const margin = 0.25;
+    const stepSize = stepBounds.getSize(new THREE.Vector3());
+    const targetArcLength = Math.max(0.8, Math.max(stepSize.x, stepSize.y) + margin * 2);
+    const halfArc = targetArcLength * 0.5;
+    const n = inner.length;
+
+    const walk = (direction) => {
+      const indices = [centerIndex];
+      let travelled = 0;
+      let current = centerIndex;
+      while (travelled < halfArc && indices.length < n) {
+        const next = (current + direction + n) % n;
+        travelled += inner[current].distanceTo(inner[next]);
+        indices.push(next);
+        current = next;
+      }
+      return indices;
+    };
+
+    const backwards = walk(-1).reverse();
+    const forwards = walk(1).slice(1);
+    const arcIndices = backwards.concat(forwards);
+    if (arcIndices.length < 2) return;
+
+    // Build a closed strip from the inner arc and its matching outer arc.
+    // Because both contours come from the standard paving generator, the strip
+    // touches the pool correctly and follows every curved pool shape.
+    const stripPoints = [];
+    arcIndices.forEach((i) => stripPoints.push(new THREE.Vector2(inner[i].x, inner[i].y)));
+    arcIndices.slice().reverse().forEach((i) => stripPoints.push(new THREE.Vector2(outer[i].x, outer[i].y)));
+
+    const shape = new THREE.Shape(stripPoints);
+
+    // Anchor the extrusion to the actual ground surface and terminate it at the
+    // same top level as the normal paving. This avoids both floating and double-raising.
+    ground.updateWorldMatrix?.(true, false);
+    standardPaving.updateWorldMatrix?.(true, false);
+    const groundBounds = new THREE.Box3().setFromObject(ground);
     const pavingBounds = new THREE.Box3().setFromObject(standardPaving);
-    const groundTop = pavingBounds.max.z;
-    const platformTop = groundTop + elevation;
-    const platformHeight = Math.max(0.01, platformTop - groundTop);
+    const groundTop = Number.isFinite(groundBounds.max.z) ? groundBounds.max.z : 0;
+    const platformTop = Number.isFinite(pavingBounds.max.z) ? pavingBounds.max.z : groundTop + elevation;
+    const platformHeight = Math.max(0.05, platformTop - groundTop);
 
-    const wallThickness = 0.2;
-    const copingOverhang = 0.05;
-    const outwardSign = -Number(frame.inwardSign || 1);
-    const innerEdge = Number(frame.wallCoord) + outwardSign * (wallThickness + copingOverhang);
-    const platformDepth = Number(standardPaving.userData?.width) || 2.0;
-    const outwardCenter = innerEdge + outwardSign * platformDepth * 0.5;
+    const geometry = new THREE.ExtrudeGeometry(shape, {
+      depth: platformHeight,
+      bevelEnabled: false,
+      curveSegments: 1,
+      steps: 1
+    });
 
-    const margin = 0.2;
-    const alongMin = frame.axis === 'x' ? stepBounds.min.y : stepBounds.min.x;
-    const alongMax = frame.axis === 'x' ? stepBounds.max.y : stepBounds.max.x;
-    const platformWidth = Math.max(0.5, alongMax - alongMin + margin * 2);
-    const alongCenter = (alongMin + alongMax) * 0.5;
+    // Match the standard paving's world-planar tile scale on both top and walls.
+    const pos = geometry.attributes.position;
+    const uv = geometry.attributes.uv;
+    if (pos && uv) {
+      const tileSize = 0.6;
+      for (let i = 0; i < pos.count; i++) {
+        uv.setXY(i, pos.getX(i) / tileSize, pos.getY(i) / tileSize);
+      }
+      uv.needsUpdate = true;
+      geometry.setAttribute('uv2', new THREE.BufferAttribute(new Float32Array(uv.array), 2));
+    }
 
-    const sizeX = frame.axis === 'x' ? platformDepth : platformWidth;
-    const sizeY = frame.axis === 'x' ? platformWidth : platformDepth;
-    const centerX = frame.axis === 'x' ? outwardCenter : alongCenter;
-    const centerY = frame.axis === 'x' ? alongCenter : outwardCenter;
-
-    const geometry = new THREE.BoxGeometry(sizeX, sizeY, platformHeight);
-    const material = standardPaving.material;
-    const platform = new THREE.Mesh(geometry, material);
+    const platform = new THREE.Mesh(geometry, standardPaving.material);
     platform.name = 'Raised entry-step paving platform';
-    platform.position.set(centerX, centerY, groundTop + platformHeight * 0.5);
+    platform.position.z = groundTop;
     platform.castShadow = true;
     platform.receiveShadow = true;
     platform.renderOrder = standardPaving.renderOrder || 2;

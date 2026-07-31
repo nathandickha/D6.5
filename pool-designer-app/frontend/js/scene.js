@@ -2697,6 +2697,17 @@ function updatePavingSpaClip(material, spaGroup, poolGroup = null) {
   }
 }
 
+
+export function getPoolPavingContours(poolGroup) {
+  const poolPts = getPoolFootprintWorldPts(poolGroup);
+  const base = cleanClosedPolygon(poolPts);
+  if (base.length < 3) return null;
+  const inner = offsetPolygon(base, COPING_OUTER_OVERHANG);
+  const outer = offsetPolygon(base, COPING_OUTER_OVERHANG + PAVING_WIDTH);
+  if (inner.length < 3 || outer.length < 3 || inner.length !== outer.length) return null;
+  return { inner, outer, width: PAVING_WIDTH };
+}
+
 function updatePoolPaving(ground, poolGroup, spaGroup = null) {
   const scene = ground?.parent;
   if (!scene || !poolGroup) return;
