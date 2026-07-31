@@ -8801,6 +8801,10 @@ setupPoolEditor() {
         }
 
         markDirty(id);
+        // Stream the current dimensions to the parent controls on every preview frame.
+        // This also covers direct 3D wall-handle drags because those handles update
+        // the same internal sliders/parameters.
+        this._notifyDesignerStateChanged?.();
       });
 
       // Change event (fires on release in many browsers) forces rebuild now
