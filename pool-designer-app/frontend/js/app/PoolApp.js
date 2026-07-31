@@ -6691,6 +6691,90 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     root.userData.poolElevationLastZ = root.position.z;
   }
 
+  _removeRaisedEntryPaving() {
+    const group = this.ground?.userData?.raisedEntryPavingGroup;
+    if (!group) return;
+    group.parent?.remove(group);
+    group.traverse?.((obj) => {
+      if (obj?.geometry) obj.geometry.dispose?.();
+      // The platform deliberately shares the standard paving material so the
+      // texture remains identical. Do not dispose the shared material here.
+    });
+    this.ground.userData.raisedEntryPavingGroup = null;
+  }
+
+  _updateRaisedEntryPaving() {
+    const ground = this.ground || this.scene?.userData?.ground;
+    const standardPaving = ground?.userData?.poolPavingMesh;
+    if (!ground || !this.scene || !this.poolGroup || !standardPaving) return;
+
+    this._removeRaisedEntryPaving();
+
+    const elevation = this.getPoolElevation();
+    const isRaised = !!this.poolParams?.raised && elevation > 0.001;
+    standardPaving.visible = !isRaised;
+    if (!isRaised) return;
+
+    const steps = [];
+    this.poolGroup.traverse((obj) => {
+      if (obj?.isMesh && obj.userData?.isStep && !obj.userData?.isStepAddon) steps.push(obj);
+    });
+    if (!steps.length) return;
+
+    const stepBounds = new THREE.Box3();
+    steps.forEach((step) => {
+      step.updateWorldMatrix?.(true, false);
+      stepBounds.union(new THREE.Box3().setFromObject(step));
+    });
+    if (stepBounds.isEmpty()) return;
+
+    const wall = steps[0]?.userData?.stepWall || this.poolGroup.userData?.stepWall || this.poolParams?.stepWall || 'west';
+    const target = { wall };
+    if (this.poolParams?.shape === 'L') target.edgeIndex = Number(this.poolParams?.lshapeStepWallIndex);
+    const frame = this._getStepWallFrameForTarget?.(target) || this._getBoxWallFrame?.(wall);
+    if (!frame) return;
+
+    const pavingBounds = new THREE.Box3().setFromObject(standardPaving);
+    const groundTop = pavingBounds.max.z;
+    const platformTop = groundTop + elevation;
+    const platformHeight = Math.max(0.01, platformTop - groundTop);
+
+    const wallThickness = 0.2;
+    const copingOverhang = 0.05;
+    const outwardSign = -Number(frame.inwardSign || 1);
+    const innerEdge = Number(frame.wallCoord) + outwardSign * (wallThickness + copingOverhang);
+    const platformDepth = Number(standardPaving.userData?.width) || 2.0;
+    const outwardCenter = innerEdge + outwardSign * platformDepth * 0.5;
+
+    const margin = 0.2;
+    const alongMin = frame.axis === 'x' ? stepBounds.min.y : stepBounds.min.x;
+    const alongMax = frame.axis === 'x' ? stepBounds.max.y : stepBounds.max.x;
+    const platformWidth = Math.max(0.5, alongMax - alongMin + margin * 2);
+    const alongCenter = (alongMin + alongMax) * 0.5;
+
+    const sizeX = frame.axis === 'x' ? platformDepth : platformWidth;
+    const sizeY = frame.axis === 'x' ? platformWidth : platformDepth;
+    const centerX = frame.axis === 'x' ? outwardCenter : alongCenter;
+    const centerY = frame.axis === 'x' ? alongCenter : outwardCenter;
+
+    const geometry = new THREE.BoxGeometry(sizeX, sizeY, platformHeight);
+    const material = standardPaving.material;
+    const platform = new THREE.Mesh(geometry, material);
+    platform.name = 'Raised entry-step paving platform';
+    platform.position.set(centerX, centerY, groundTop + platformHeight * 0.5);
+    platform.castShadow = true;
+    platform.receiveShadow = true;
+    platform.renderOrder = standardPaving.renderOrder || 2;
+    platform.userData.isPoolPaving = true;
+    platform.userData.isRaisedEntryPaving = true;
+
+    const group = new THREE.Group();
+    group.name = 'Raised entry-step paving';
+    group.add(platform);
+    this.scene.add(group);
+    ground.userData.raisedEntryPavingGroup = group;
+  }
+
   applyPoolElevation() {
     const elevation = this.getPoolElevation();
     this.poolParams.poolElevation = elevation;
@@ -6703,7 +6787,14 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this._applyElevationDelta(this.ground?.userData?.spaChannelGroup, elevation);
     this._applyElevationDelta(this.ground?.userData?.spaChannelWaterGroup, elevation);
 
-    // Ground and paving are intentionally not translated.
+    // For a raised pool, replace the full perimeter paving with one raised
+    // platform behind the entry steps. Its vertical paving faces remain
+    // attached to the unchanged ground plane.
+    this._updateRaisedEntryPaving();
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => this._updateRaisedEntryPaving());
+    }
+
     this._updateDimensionHandles?.();
     this._updateSpaDimensionHandles?.();
     this._updateSectionDimensionHandles?.();
