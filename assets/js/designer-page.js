@@ -51,7 +51,14 @@
   function clampToRange(input, value) {
     const min = input.min === '' ? -Infinity : Number(input.min);
     const max = input.max === '' ? Infinity : Number(input.max);
-    return Math.min(max, Math.max(min, Number(value)));
+    const step = Number(input.step);
+    let next = Math.min(max, Math.max(min, Number(value)));
+    if (Number.isFinite(step) && step > 0) {
+      const base = Number.isFinite(min) ? min : 0;
+      next = base + Math.round((next - base) / step) * step;
+      next = Number(next.toFixed(step >= 1 ? 0 : 1));
+    }
+    return next;
   }
 
   document.querySelectorAll('[data-group]').forEach(input => {
@@ -126,6 +133,17 @@
     }
   }
 
+
+  function setSpaControlsEnabled(enabled) {
+    const section = document.getElementById('spaControlsSection');
+    if (!section) return;
+    section.classList.toggle('spa-controls-disabled', !enabled);
+    section.querySelectorAll('.control-content input, .control-content select, .control-content button').forEach(control => {
+      const isEnableToggle = control.matches('[data-command="UPDATE_SPA"][data-key="enabled"]');
+      if (!isEnableToggle) control.disabled = !enabled;
+    });
+  }
+
   document.querySelectorAll('[data-command]').forEach(el => {
     if (el.dataset.group) return;
     const eventName = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'click';
@@ -148,15 +166,14 @@
     });
   });
 
-  // Always present the complete Pool controls when the designer page opens.
-  // Browsers may restore a previously collapsed <details> state during navigation,
-  // so explicitly reopen the Pool section after the DOM is ready.
-  const poolControlsSection = document.getElementById('poolControlsSection');
-  if (poolControlsSection) poolControlsSection.open = true;
+  ['poolControlsSection', 'spaControlsSection'].forEach(id => {
+    const section = document.getElementById(id);
+    if (section) section.open = false;
+  });
 
   const controlTabs = [...document.querySelectorAll('[data-control-tab]')];
   const controlPanels = [...document.querySelectorAll('[data-control-panel]')];
-  const lastOpenByPanel = new Map([['pool-spa', 'poolControlsSection']]);
+  const lastOpenByPanel = new Map();
 
   function activateControlTab(tabName, focusTab = false) {
     controlTabs.forEach(tab => {
@@ -172,8 +189,7 @@
       if (active) {
         const rememberedId = lastOpenByPanel.get(tabName);
         const remembered = rememberedId ? panel.querySelector(`#${rememberedId}`) : null;
-        const first = panel.querySelector('details');
-        (remembered || first)?.setAttribute('open', '');
+        if (remembered) remembered.setAttribute('open', '');
       }
     });
   }
@@ -200,6 +216,7 @@
     }));
   });
 
+  setSpaControlsEnabled(false);
   activateControlTab('pool-spa');
 
   document.getElementById('panelCollapse')?.addEventListener('click', () => {
@@ -224,6 +241,7 @@
     setPillState(raisedToggle, !!p.raised);
     const spaToggle = document.querySelector('[data-command="UPDATE_SPA"][data-key="enabled"]');
     setPillState(spaToggle, !!s.enabled);
+    setSpaControlsEnabled(!!s.enabled);
     const selectedTile = String(p.tileColor || next.tileColor || next.interiorTile || '').toLowerCase();
     document.querySelectorAll('[data-command="SET_INTERIOR_TILE"][data-value]').forEach(button => {
       button.classList.toggle('is-selected', String(button.dataset.value || '').toLowerCase() === selectedTile);

@@ -359,16 +359,10 @@ body:not(.home-page){
 .pool-designer-page .conditional-control[hidden]{display:none!important}
 .pool-designer-page .conditional-control{display:grid;gap:6px;margin-top:-5px;padding:8px 0 2px 0;border-top:1px solid #e5e3df}
 
-/* Four-tile product previews in the external Interior Finish controls. */
-.pool-designer-page .tile-swatch-grid i {
-  width:42px;
-  height:42px;
-  background-size:cover;
-  background-position:center;
-  background-repeat:no-repeat;
-  border-color:rgba(20,20,20,.14);
+/* Spa controls remain unavailable until the Spa switch is enabled. */
+#spaControlsSection.spa-controls-disabled .control-content > :not(.control-pill-toggle) {
+  opacity: .42;
 }
-.pool-designer-page .tile-swatch-grid button {
-  grid-template-columns:42px minmax(0,1fr);
-  min-height:54px;
+#spaControlsSection .control-content :disabled {
+  cursor: not-allowed;
 }
