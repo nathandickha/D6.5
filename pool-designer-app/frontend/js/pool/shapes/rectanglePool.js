@@ -1617,11 +1617,11 @@ floor.userData.type = "floor";
 
   const walls = [
     new THREE.Mesh(
-      new THREE.BoxGeometry(length, wallThickness, clampedDeep),
+      new THREE.BoxGeometry(length + wallThickness * 2, wallThickness, clampedDeep),
       wallMat.clone()
     ), // 0: south
     new THREE.Mesh(
-      new THREE.BoxGeometry(length, wallThickness, clampedDeep),
+      new THREE.BoxGeometry(length + wallThickness * 2, wallThickness, clampedDeep),
       wallMat.clone()
     ), // 1: north
     new THREE.Mesh(

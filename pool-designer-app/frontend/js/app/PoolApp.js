@@ -363,6 +363,23 @@ export class PoolApp {
     this._boundDimensionHandlePointerUp = () => this._onDimensionHandlePointerUp();
 
     this.renderer.domElement.addEventListener("pointerdown", this._boundDimensionHandlePointerDown);
+    this._boundExternalPanelFocusPointerDown = (event) => {
+      if (event.button !== 0 || !this.poolGroup || !this.camera) return;
+      const ndc = this._pointerToNDC(event);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), this.camera);
+      if (this.spa) {
+        const spaHits = ray.intersectObjects(this.getSpaSelectionMeshes?.() || [], true);
+        if (spaHits.length) { this._notifyDesignerInteraction?.("spa"); return; }
+      }
+      const poolMeshes = [];
+      this.poolGroup.traverse((obj) => {
+        const ud = obj?.userData || {};
+        if (obj?.isMesh && (ud.isWall || ud.isFloor || ud.isCoping || ud.isStep || ud.isBench)) poolMeshes.push(obj);
+      });
+      if (poolMeshes.length && ray.intersectObjects(poolMeshes, true).length) this._notifyDesignerInteraction?.("pool");
+    };
+    this.renderer.domElement.addEventListener("pointerdown", this._boundExternalPanelFocusPointerDown, true);
     window.addEventListener("pointermove", this._boundDimensionHandlePointerMove);
     window.addEventListener("pointerup", this._boundDimensionHandlePointerUp);
     window.addEventListener("pointercancel", this._boundDimensionHandlePointerUp);
@@ -372,6 +389,10 @@ export class PoolApp {
     if (this._boundDimensionHandlePointerDown && this.renderer?.domElement) {
       this.renderer.domElement.removeEventListener("pointerdown", this._boundDimensionHandlePointerDown);
       this._boundDimensionHandlePointerDown = null;
+    }
+    if (this._boundExternalPanelFocusPointerDown && this.renderer?.domElement) {
+      this.renderer.domElement.removeEventListener("pointerdown", this._boundExternalPanelFocusPointerDown, true);
+      this._boundExternalPanelFocusPointerDown = null;
     }
     if (this._boundDimensionHandlePointerMove) {
       window.removeEventListener("pointermove", this._boundDimensionHandlePointerMove);
@@ -496,6 +517,7 @@ export class PoolApp {
     const key = handle?.userData?.handleKey;
     if (!key) return;
 
+    this._notifyDesignerInteraction?.("pool");
     event.preventDefault();
     event.stopPropagation();
 
@@ -712,6 +734,7 @@ export class PoolApp {
     const key = handle?.userData?.handleKey;
     if (!key) return;
 
+    this._notifyDesignerInteraction?.("spa");
     event.preventDefault();
     event.stopImmediatePropagation();
 
@@ -7969,6 +7992,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       event.preventDefault();
       event.stopImmediatePropagation();
 
+      this._notifyDesignerInteraction?.("spa");
       this.selectedSpa = this.spa;
       setSelectedSpa(this.spa);
       this.updateHighlightForSpa(this.spa, true);

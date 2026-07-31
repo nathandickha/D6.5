@@ -107,5 +107,6 @@ export function connectDesignerBridge(poolApp, presets=[]) {
   };
   app.poolParams?.subscribe?.(scheduleChanged);
   app._notifyDesignerStateChanged = scheduleChanged;
+  app._notifyDesignerInteraction = (target) => post('MODEL_INTERACTION', { target: target === 'spa' ? 'spa' : 'pool' });
   post('DESIGNER_READY', snapshot()); changed();
 }
