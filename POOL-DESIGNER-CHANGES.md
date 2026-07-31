@@ -21,3 +21,11 @@ This package updates only the Pool Designer experience and its bundled Three.js 
 - `pool-designer-app/frontend/js/designer-bridge.js`
 - `pool-designer-app/frontend/js/main.js`
 - `pool-designer-app/frontend/css/styles.css`
+## Raised pool entry paving platform
+
+- When Raised Pool is enabled, the full perimeter paving is hidden.
+- A localised paving platform is generated only behind the entry steps.
+- The platform top follows the selected raised-pool height.
+- Its vertical paving faces extend down to the unchanged ground/paving level.
+- Lowering the pool restores the normal full perimeter paving.
+
