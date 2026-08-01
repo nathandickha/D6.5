@@ -693,6 +693,53 @@ function scheduleStarterPreview3D(card, preset) {
   }
 }
 
+const LAST_PROJECT_KEY = "atelier3d:lastProject:v1";
+
+function readLastProject() {
+  try { return JSON.parse(localStorage.getItem(LAST_PROJECT_KEY) || "null"); } catch (_) { return null; }
+}
+
+function savedStateToPreset(record) {
+  const pool = record?.state?.pool || {};
+  const shape = pool.shape || pool.poolShape || "rectangular";
+  return {
+    id: "recovered-project",
+    title: "Recovered project",
+    description: "Last project on this device",
+    preview: shape === "L" ? "lshape" : (shape === "oval" || shape === "kidney" ? "oval" : "rectangle"),
+    params: { ...pool, shape, length:Number(pool.length||8), width:Number(pool.width||4), shallow:Number(pool.shallow||pool.shallowDepth||1.2), deep:Number(pool.deep||pool.deepDepth||1.8) },
+    spa: record?.state?.spa?.enabled ? { shape:record.state.spa.shape||"square", width:Number(record.state.spa.width||2), length:Number(record.state.spa.length||2), topHeight:Number(record.state.spa.height||0) } : null
+  };
+}
+
+async function launchStarterPreset(preset, card=null) {
+  if (appBootPromise) return appBootPromise;
+  const overlay = document.getElementById("starterPresetOverlay");
+  setStarterBusy(card, true);
+  appBootPromise = preloadEditorModule().then(async ({ PoolApp }) => {
+    const app = new PoolApp(); window.poolApp = app;
+    await app.start({ starterPreset: preset });
+    overlay?.classList.add("hidden");
+    document.getElementById("projectRecoveryModal")?.setAttribute("hidden", "");
+    if (new URLSearchParams(window.location.search).get("embedded") === "1") connectDesignerBridge(app, STARTER_POOL_PRESETS);
+    return app;
+  });
+  try { return await appBootPromise; } catch (err) { appBootPromise=null; setStarterBusy(card,false); throw err; }
+}
+
+function setupProjectRecovery() {
+  const record = readLastProject();
+  const modal = document.getElementById("projectRecoveryModal");
+  if (!record?.state?.pool || !modal) return;
+  const modified = document.getElementById("recoveryModified");
+  if (modified) modified.textContent = `Last modified ${new Date(record.modifiedAt).toLocaleString()}`;
+  const preview = document.getElementById("recoveryPreview");
+  if (preview) preview.parentElement.dataset.preview = savedStateToPreset(record).preview;
+  modal.hidden = false;
+  document.getElementById("loadExistingProject")?.addEventListener("click", () => launchStarterPreset(savedStateToPreset(record)).catch(console.error));
+  document.getElementById("createNewProject")?.addEventListener("click", () => { modal.hidden = true; });
+}
+
 function setupStarterPresetScreen() {
   const overlay = document.getElementById("starterPresetOverlay");
   const grid = document.getElementById("starterPresetGrid");
@@ -717,28 +764,15 @@ function setupStarterPresetScreen() {
         <span class="starter-card-action">Start Design</span>
       </div>
     `;
-
     card.addEventListener("click", async () => {
       if (appBootPromise) return;
-      if (window.parent !== window) {
-        window.parent.postMessage({
-          source: "atelier3d-designer",
-          type: "DESIGN_LOADING_STARTED",
-          payload: { presetId: preset.id }
-        }, window.location.origin);
+      if (window.parent !== window) window.parent.postMessage({ source:"atelier3d-designer", type:"DESIGN_LOADING_STARTED", payload:{presetId:preset.id} }, window.location.origin);
+      try { await launchStarterPreset(preset, card); }
+      catch (err) {
+        console.error("[PoolApp] Failed to start 3D editor", err);
+        if (window.parent !== window) window.parent.postMessage({ source:"atelier3d-designer", type:"DESIGN_LOAD_FAILED", payload:{presetId:preset.id,message:err?.message||"Designer failed to load"} }, window.location.origin);
       }
-      setStarterBusy(card, true);
-      try {
-        appBootPromise = preloadEditorModule().then(async ({ PoolApp }) => {
-          const app = new PoolApp();
-          window.poolApp = app;
-          await app.start({ starterPreset: preset });
-          overlay.classList.add("hidden");
-          if (new URLSearchParams(window.location.search).get("embedded") === "1") {
-            connectDesignerBridge(app, STARTER_POOL_PRESETS);
-          }
-          return app;
-        });
+    });
         await appBootPromise;
       } catch (err) {
         console.error("[PoolApp] Failed to start 3D editor", err);
@@ -764,6 +798,7 @@ preloadEnvironmentAssets();
 preloadPavingAssets();
 preloadWaterAssets();
 setupStarterPresetScreen();
+setupProjectRecovery();
 
 // Embedded mode now waits for an explicit starter-card click.
 // The selected preset is the only action that starts the Three.js editor.

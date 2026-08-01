@@ -306,95 +306,62 @@ export class PoolApp {
 
   _makeDimensionHandleMesh(key) {
     const axisInfo = this._getHandleAxisInfo(key);
-    const width = 256;
-    const height = 96;
+    const size = 128;
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = size;
+    canvas.height = size;
     const ctx = canvas.getContext("2d");
+    const cx = size / 2;
+    const cy = size / 2;
+    const radius = 43;
 
-    ctx.clearRect(0, 0, width, height);
-    const x = 9;
-    const y = 12;
-    const w = width - 18;
-    const h = height - 24;
-    const r = h * 0.5;
-
+    ctx.clearRect(0, 0, size, size);
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-    ctx.fillStyle = "rgba(250,249,246,0.97)";
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(250,249,246,0.84)";
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(34,38,42,0.22)";
+    ctx.strokeStyle = "rgba(35,39,42,0.22)";
     ctx.stroke();
 
-    ctx.strokeStyle = "#225f78";
-    ctx.fillStyle = "#225f78";
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#303438";
+    ctx.fillStyle = "#303438";
+    ctx.lineWidth = 3.2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    const cy = height * 0.5;
-    const left = 43;
-    const right = width - 43;
+    const left = cx - 21;
+    const right = cx + 21;
     ctx.beginPath();
     ctx.moveTo(left, cy);
     ctx.lineTo(right, cy);
     ctx.stroke();
-
-    const arrow = 12;
+    const arrow = 7;
     ctx.beginPath();
-    ctx.moveTo(left, cy);
-    ctx.lineTo(left + arrow, cy - arrow * 0.75);
-    ctx.lineTo(left + arrow, cy + arrow * 0.75);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(right, cy);
-    ctx.lineTo(right - arrow, cy - arrow * 0.75);
-    ctx.lineTo(right - arrow, cy + arrow * 0.75);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(width * 0.5, cy, 17, 0, Math.PI * 2);
-    ctx.fillStyle = "#f7f6f2";
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(34,38,42,0.18)";
+    ctx.moveTo(left, cy); ctx.lineTo(left + arrow, cy - arrow); ctx.moveTo(left, cy); ctx.lineTo(left + arrow, cy + arrow);
+    ctx.moveTo(right, cy); ctx.lineTo(right - arrow, cy - arrow); ctx.moveTo(right, cy); ctx.lineTo(right - arrow, cy + arrow);
     ctx.stroke();
-    ctx.fillStyle = "#25282b";
-    ctx.font = "600 21px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(axisInfo.label, width * 0.5, cy + 1);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.needsUpdate = true;
-
-    const material = new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false,
-      sizeAttenuation: true
-    });
-
+    const material = new THREE.SpriteMaterial({ map:texture, transparent:true, depthTest:false, depthWrite:false, sizeAttenuation:true, opacity:0.84 });
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(0.86, 0.32, 1);
+    sprite.scale.set(0.34, 0.34, 1);
     sprite.renderOrder = 2100;
     sprite.frustumCulled = false;
     sprite.userData.handleKey = key;
     sprite.userData.handleAxis = axisInfo.axis;
     sprite.userData.handleAxisVector = axisInfo.vector;
     sprite.userData.isDimensionHandle = true;
+    sprite.userData.tooltip = key.includes('elevation') ? 'Adjust height' : key.includes('shallow') || key.includes('deep') ? 'Adjust depth' : key.includes('width') ? 'Adjust width' : 'Adjust length';
     return sprite;
   }
 
   _setDimensionHandleActive(mesh, active) {
     if (!mesh) return;
-    mesh.scale.set(active ? 1.0 : 0.86, active ? 0.37 : 0.32, 1);
-    if (mesh.material) mesh.material.opacity = active ? 1 : 0.96;
+    mesh.scale.setScalar(active ? 0.37 : 0.34);
+    mesh.scale.z = 1;
+    if (mesh.material) mesh.material.opacity = active ? 1 : 0.84;
   }
 
   _orientDimensionHandleToCamera(mesh, worldPoint) {

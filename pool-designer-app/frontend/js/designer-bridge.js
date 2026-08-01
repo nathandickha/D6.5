@@ -25,7 +25,7 @@ function snapshot() {
   const spa = app?.spa;
   return { pool: { ...p, raised: !!p.raised, poolElevation: Number(p.poolElevation || 0) }, spa: { enabled:!!spa, shape:spa?.userData?.spaShape || null, width:spa?.userData?.spaWidth || null, length:spa?.userData?.spaLength || null, height:Number(document.getElementById('spaTopHeight')?.value || 0), x:spa?.position?.x || 0, y:spa?.position?.y || 0 }, camera: { section:!!app?.sectionViewEnabled } };
 }
-function changed() { post('DESIGN_STATE_CHANGED', snapshot()); }
+function changed() { const state=snapshot(); try{ localStorage.setItem('atelier3d:lastProject:v1', JSON.stringify({modifiedAt:new Date().toISOString(),state})); }catch(_){} post('DESIGN_STATE_CHANGED', state); }
 async function apply(type, payload={}) {
   if (!app) throw new Error('Designer is not ready');
   const isPreview = type === 'PREVIEW_POOL_DIMENSIONS' || type === 'PREVIEW_SPA' || type === 'PREVIEW_POOL_HEIGHT';
