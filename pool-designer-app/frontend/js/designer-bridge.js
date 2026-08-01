@@ -34,7 +34,7 @@ async function apply(type, payload={}) {
     case 'REQUEST_DESIGN_STATE': changed(); break;
     case 'SET_RENDER_PAUSED': app._renderPaused = !!payload.paused; break;
     case 'SET_STARTER_POOL': { const preset = starterPresets.find(x => x.id === payload.id); if (preset) await app.applyStarterPreset(preset); break; }
-    case 'SET_POOL_SHAPE': input('shape', payload.shape); break;
+    case 'SET_POOL_SHAPE': await app.setPoolShape?.(payload.shape); break;
     case 'SET_POOL_RAISED': await app.setPoolRaised?.(!!payload.raised); break;
     case 'PREVIEW_POOL_HEIGHT':
     case 'SET_POOL_HEIGHT':

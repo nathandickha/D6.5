@@ -296,45 +296,131 @@ export class PoolApp {
     this._scheduleRebuildDebounced();
   }
 
-  _makeDimensionHandleMesh(key, arrow) {
-    const size = 128;
+  _getHandleAxisInfo(key) {
+    const k = String(key || "").toLowerCase();
+    if (k.includes("elevation") || (k.includes("shallow") && !k.includes("flat"))) return { axis: "z", vector: new THREE.Vector3(0, 0, 1), label: "Z" };
+    if (k.includes("deep") && !k.includes("flat")) return { axis: "z", vector: new THREE.Vector3(0, 0, 1), label: "Z" };
+    if (k.includes("top") || k.includes("bottom") || k.includes("width")) return { axis: "y", vector: new THREE.Vector3(0, 1, 0), label: "Y" };
+    return { axis: "x", vector: new THREE.Vector3(1, 0, 0), label: "X" };
+  }
+
+  _makeDimensionHandleMesh(key) {
+    const axisInfo = this._getHandleAxisInfo(key);
+    const width = 256;
+    const height = 96;
     const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext("2d");
 
-    ctx.clearRect(0, 0, size, size);
+    ctx.clearRect(0, 0, width, height);
+    const x = 9;
+    const y = 12;
+    const w = width - 18;
+    const h = height - 24;
+    const r = h * 0.5;
+
     ctx.beginPath();
-    ctx.arc(size * 0.5, size * 0.5, size * 0.34, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.98)";
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = "rgba(250,249,246,0.97)";
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    ctx.strokeStyle = "rgba(34,38,42,0.22)";
     ctx.stroke();
 
-    ctx.fillStyle = "#1d1d1d";
-    ctx.font = "700 46px Arial";
+    ctx.strokeStyle = "#225f78";
+    ctx.fillStyle = "#225f78";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const cy = height * 0.5;
+    const left = 43;
+    const right = width - 43;
+    ctx.beginPath();
+    ctx.moveTo(left, cy);
+    ctx.lineTo(right, cy);
+    ctx.stroke();
+
+    const arrow = 12;
+    ctx.beginPath();
+    ctx.moveTo(left, cy);
+    ctx.lineTo(left + arrow, cy - arrow * 0.75);
+    ctx.lineTo(left + arrow, cy + arrow * 0.75);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(right, cy);
+    ctx.lineTo(right - arrow, cy - arrow * 0.75);
+    ctx.lineTo(right - arrow, cy + arrow * 0.75);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(width * 0.5, cy, 17, 0, Math.PI * 2);
+    ctx.fillStyle = "#f7f6f2";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(34,38,42,0.18)";
+    ctx.stroke();
+    ctx.fillStyle = "#25282b";
+    ctx.font = "600 21px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(arrow, size * 0.5, size * 0.52);
+    ctx.fillText(axisInfo.label, width * 0.5, cy + 1);
 
     const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
     texture.needsUpdate = true;
 
     const material = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
       depthTest: false,
-      depthWrite: false
+      depthWrite: false,
+      sizeAttenuation: true
     });
 
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(0.62, 0.62, 0.62);
+    sprite.scale.set(0.86, 0.32, 1);
     sprite.renderOrder = 2100;
     sprite.frustumCulled = false;
     sprite.userData.handleKey = key;
+    sprite.userData.handleAxis = axisInfo.axis;
+    sprite.userData.handleAxisVector = axisInfo.vector;
     sprite.userData.isDimensionHandle = true;
     return sprite;
+  }
+
+  _setDimensionHandleActive(mesh, active) {
+    if (!mesh) return;
+    mesh.scale.set(active ? 1.0 : 0.86, active ? 0.37 : 0.32, 1);
+    if (mesh.material) mesh.material.opacity = active ? 1 : 0.96;
+  }
+
+  _orientDimensionHandleToCamera(mesh, worldPoint) {
+    if (!mesh?.material || !worldPoint || !this.camera) return;
+    const axis = mesh.userData?.handleAxisVector;
+    if (!axis?.isVector3) return;
+    const a = this._projectWorldToScreen(worldPoint);
+    const b = this._projectWorldToScreen(worldPoint.clone().addScaledVector(axis, 0.75));
+    if (!a || !b) return;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    if (Math.abs(dx) + Math.abs(dy) < 0.001) return;
+    mesh.material.rotation = Math.atan2(-dy, dx);
+  }
+
+  _getHandleScreenAxisMetrics(mesh, worldPoint) {
+    const axis = mesh?.userData?.handleAxisVector;
+    if (!axis?.isVector3 || !worldPoint) return null;
+    const a = this._projectWorldToScreen(worldPoint);
+    const b = this._projectWorldToScreen(worldPoint.clone().add(axis));
+    if (!a || !b) return null;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const pixelsPerWorld = Math.hypot(dx, dy);
+    if (pixelsPerWorld < 0.001) return null;
+    return { x: dx / pixelsPerWorld, y: dy / pixelsPerWorld, pixelsPerWorld };
   }
 
   setupDimensionHandles() {
@@ -342,12 +428,13 @@ export class PoolApp {
     if (!this.scene || !this.renderer) return;
 
     const meshes = {
-      top: this._makeDimensionHandleMesh("top", "↕"),
-      bottom: this._makeDimensionHandleMesh("bottom", "↕"),
-      left: this._makeDimensionHandleMesh("left", "↔"),
-      right: this._makeDimensionHandleMesh("right", "↔"),
-      notchLength: this._makeDimensionHandleMesh("notchLength", "↔"),
-      notchWidth: this._makeDimensionHandleMesh("notchWidth", "↕")
+      top: this._makeDimensionHandleMesh("top"),
+      bottom: this._makeDimensionHandleMesh("bottom"),
+      left: this._makeDimensionHandleMesh("left"),
+      right: this._makeDimensionHandleMesh("right"),
+      notchLength: this._makeDimensionHandleMesh("notchLength"),
+      notchWidth: this._makeDimensionHandleMesh("notchWidth"),
+      elevation: this._makeDimensionHandleMesh("poolElevation")
     };
 
     Object.values(meshes).forEach((mesh) => this.scene.add(mesh));
@@ -497,7 +584,8 @@ export class PoolApp {
       top: new THREE.Vector3(center.x, box.max.y + out, z),
       bottom: new THREE.Vector3(center.x, box.min.y - out, z),
       left: new THREE.Vector3(box.min.x - out, center.y, z),
-      right: new THREE.Vector3(box.max.x + out, center.y, z)
+      right: new THREE.Vector3(box.max.x + out, center.y, z),
+      elevation: new THREE.Vector3(box.max.x + 0.28, box.min.y - 0.28, box.max.z + 0.18)
     };
   }
 
@@ -523,13 +611,15 @@ export class PoolApp {
     event.stopPropagation();
 
     const planeZ = 0;
-    const point = this._screenToPlanePoint(event.clientX, event.clientY, planeZ);
-    if (!point) return;
+    const point = this._screenToPlanePoint(event.clientX, event.clientY, planeZ) || handle.position.clone();
+    const screenAxis = this._getHandleScreenAxisMetrics(handle, handle.position);
+    if (!screenAxis) return;
 
     const affectsLength = key === "left" || key === "right";
     const affectsNotchLength = key === "notchLength";
     const affectsNotchWidth = key === "notchWidth";
-    const label = affectsLength ? "length" : affectsNotchLength ? "notch length" : affectsNotchWidth ? "notch width" : "width";
+    const affectsElevation = key === "poolElevation";
+    const label = affectsLength ? "length" : affectsNotchLength ? "notch length" : affectsNotchWidth ? "notch width" : affectsElevation ? "pool height" : "width";
     this.captureUndoState(`Drag ${label} handle`);
 
     if (!this._live.baseParams) {
@@ -542,13 +632,17 @@ export class PoolApp {
       handle,
       planeZ,
       startPoint: point.clone(),
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      screenAxis,
       startLength: Number(this.poolParams.length) || 0,
       startWidth: Number(this.poolParams.width) || 0,
       startNotchLengthX: Number(this.poolParams.notchLengthX) || 0,
-      startNotchWidthY: Number(this.poolParams.notchWidthY) || 0
+      startNotchWidthY: Number(this.poolParams.notchWidthY) || 0,
+      startElevation: this.getPoolElevation()
     };
 
-    handle.scale.set(0.68, 0.68, 0.68);
+    this._setDimensionHandleActive(handle, true);
     if (this.controls) this.controls.enabled = false;
     this._setLiveDragging(true);
   }
@@ -557,13 +651,14 @@ export class PoolApp {
     const drag = this.dimensionHandles?.drag;
     if (!drag || event.pointerId !== drag.pointerId) return;
 
-    const point = this._screenToPlanePoint(event.clientX, event.clientY, drag.planeZ || 0);
-    if (!point) return;
+    const pointerDx = event.clientX - drag.startClientX;
+    const pointerDy = event.clientY - drag.startClientY;
+    const projectedPixels = pointerDx * drag.screenAxis.x + pointerDy * drag.screenAxis.y;
+    const worldDelta = projectedPixels / drag.screenAxis.pixelsPerWorld;
 
     const minSize = 2.0;
     if (drag.key === "left" || drag.key === "right") {
-      const dx = point.x - drag.startPoint.x;
-      const signedDelta = drag.key === "right" ? dx : -dx;
+      const signedDelta = drag.key === "right" ? worldDelta : -worldDelta;
       const rawLength = Math.max(minSize, drag.startLength + signedDelta * 2);
       const nextLength = Math.round(rawLength / 0.1) * 0.1;
       if (Math.abs(nextLength - this.poolParams.length) > 1e-4) {
@@ -571,8 +666,7 @@ export class PoolApp {
         this._markPoolParamDirty("length");
       }
     } else if (drag.key === "top" || drag.key === "bottom") {
-      const dy = point.y - drag.startPoint.y;
-      const signedDelta = drag.key === "top" ? dy : -dy;
+      const signedDelta = drag.key === "top" ? worldDelta : -worldDelta;
       const rawWidth = Math.max(minSize, drag.startWidth + signedDelta * 2);
       const nextWidth = Math.round(rawWidth / 0.1) * 0.1;
       if (Math.abs(nextWidth - this.poolParams.width) > 1e-4) {
@@ -580,20 +674,27 @@ export class PoolApp {
         this._markPoolParamDirty("width");
       }
     } else if (drag.key === "notchLength") {
-      const dx = point.x - drag.startPoint.x;
-      const rawFrac = drag.startNotchLengthX - (dx / Math.max(0.001, drag.startLength));
+      const rawFrac = drag.startNotchLengthX - (worldDelta / Math.max(0.001, drag.startLength));
       const nextFrac = Math.round(THREE.MathUtils.clamp(rawFrac, 0.1, 0.9) / 0.05) * 0.05;
       if (Math.abs(nextFrac - this.poolParams.notchLengthX) > 1e-4) {
         this.poolParams.notchLengthX = nextFrac;
         this._markPoolParamDirty("notchLengthX");
       }
     } else if (drag.key === "notchWidth") {
-      const dy = point.y - drag.startPoint.y;
-      const rawFrac = drag.startNotchWidthY - (dy / Math.max(0.001, drag.startWidth));
+      const rawFrac = drag.startNotchWidthY - (worldDelta / Math.max(0.001, drag.startWidth));
       const nextFrac = Math.round(THREE.MathUtils.clamp(rawFrac, 0.1, 0.9) / 0.05) * 0.05;
       if (Math.abs(nextFrac - this.poolParams.notchWidthY) > 1e-4) {
         this.poolParams.notchWidthY = nextFrac;
         this._markPoolParamDirty("notchWidthY");
+      }
+    } else if (drag.key === "poolElevation") {
+      const nextElevation = Math.round(THREE.MathUtils.clamp(drag.startElevation + worldDelta, 0.1, 1.5) / 0.1) * 0.1;
+      if (Math.abs(nextElevation - this.getPoolElevation()) > 1e-4) {
+        this.poolParams.raised = true;
+        this.poolParams.poolElevation = nextElevation;
+        this.applyPoolElevation();
+        this.syncPoolRaisedControl();
+        this._notifyDesignerStateChanged?.();
       }
     }
 
@@ -603,7 +704,7 @@ export class PoolApp {
   async _onDimensionHandlePointerUp() {
     const drag = this.dimensionHandles?.drag;
     if (!drag) return;
-    drag.handle?.scale?.set?.(0.62, 0.62, 0.62);
+    this._setDimensionHandleActive(drag.handle, false);
     this.dimensionHandles.drag = null;
     if (this.controls) this.controls.enabled = true;
     await this._setLiveDragging(false);
@@ -635,12 +736,13 @@ export class PoolApp {
     const isLShape = this.poolParams?.shape === "L";
     Object.entries(this.dimensionHandles.meshes).forEach(([key, mesh]) => {
       const point = targets[key];
-      if (!mesh || !point || ((key === "notchLength" || key === "notchWidth") && !isLShape)) {
+      if (!mesh || !point || ((key === "notchLength" || key === "notchWidth") && !isLShape) || (key === "elevation" && !this.poolParams?.raised)) {
         if (mesh) mesh.visible = false;
         return;
       }
 
       mesh.position.copy(point);
+      this._orientDimensionHandleToCamera(mesh, point);
       const screen = this._projectWorldToScreen(point);
       if (!screen) {
         mesh.visible = false;
@@ -664,10 +766,10 @@ export class PoolApp {
     if (!this.scene || !this.renderer) return;
 
     const meshes = {
-      top: this._makeDimensionHandleMesh("spaTop", "↕"),
-      bottom: this._makeDimensionHandleMesh("spaBottom", "↕"),
-      left: this._makeDimensionHandleMesh("spaLeft", "↔"),
-      right: this._makeDimensionHandleMesh("spaRight", "↔")
+      top: this._makeDimensionHandleMesh("spaTop"),
+      bottom: this._makeDimensionHandleMesh("spaBottom"),
+      left: this._makeDimensionHandleMesh("spaLeft"),
+      right: this._makeDimensionHandleMesh("spaRight")
     };
 
     Object.values(meshes).forEach((mesh) => this.scene.add(mesh));
@@ -739,8 +841,9 @@ export class PoolApp {
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    const point = this._screenToPlanePoint(event.clientX, event.clientY, 0);
-    if (!point) return;
+    const point = this._screenToPlanePoint(event.clientX, event.clientY, 0) || handle.position.clone();
+    const screenAxis = this._getHandleScreenAxisMetrics(handle, handle.position);
+    if (!screenAxis) return;
 
     this.captureUndoState("Spa dimension handle drag");
 
@@ -749,11 +852,14 @@ export class PoolApp {
       pointerId: event.pointerId,
       handle,
       startPoint: point.clone(),
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      screenAxis,
       startLength: Number(this.spa.userData?.spaLength) || 2,
       startWidth: Number(this.spa.userData?.spaWidth) || 2
     };
 
-    handle.scale.set(0.68, 0.68, 0.68);
+    this._setDimensionHandleActive(handle, true);
     if (this.controls) this.controls.enabled = false;
   }
 
@@ -761,15 +867,16 @@ export class PoolApp {
     const drag = this.spaDimensionHandles?.drag;
     if (!drag || event.pointerId !== drag.pointerId || !this.spa) return;
 
-    const point = this._screenToPlanePoint(event.clientX, event.clientY, 0);
-    if (!point) return;
+    const pointerDx = event.clientX - drag.startClientX;
+    const pointerDy = event.clientY - drag.startClientY;
+    const projectedPixels = pointerDx * drag.screenAxis.x + pointerDy * drag.screenAxis.y;
+    const worldDelta = projectedPixels / drag.screenAxis.pixelsPerWorld;
 
     const spaShape = this.spa.userData?.spaShape || this.getSelectedSpaShape();
     const snap = (v) => Math.round(Math.max(0.5, v) / 0.1) * 0.1;
 
     if (drag.key === "spaLeft" || drag.key === "spaRight") {
-      const dx = point.x - drag.startPoint.x;
-      const signedDelta = drag.key === "spaRight" ? dx : -dx;
+      const signedDelta = drag.key === "spaRight" ? worldDelta : -worldDelta;
       const nextLength = snap(drag.startLength + signedDelta * 2);
       if (spaShape === "circular") {
         this.spa.userData.spaLength = nextLength;
@@ -778,8 +885,7 @@ export class PoolApp {
         this.spa.userData.spaLength = nextLength;
       }
     } else {
-      const dy = point.y - drag.startPoint.y;
-      const signedDelta = drag.key === "spaTop" ? dy : -dy;
+      const signedDelta = drag.key === "spaTop" ? worldDelta : -worldDelta;
       const nextWidth = snap(drag.startWidth + signedDelta * 2);
       if (spaShape === "circular") {
         this.spa.userData.spaLength = nextWidth;
@@ -802,7 +908,7 @@ export class PoolApp {
   async _onSpaHandlePointerUp() {
     const drag = this.spaDimensionHandles?.drag;
     if (!drag) return;
-    drag.handle?.scale?.set?.(0.62, 0.62, 0.62);
+    this._setDimensionHandleActive(drag.handle, false);
     this.spaDimensionHandles.drag = null;
     if (this.controls) this.controls.enabled = true;
     if (this.spa) {
@@ -852,6 +958,7 @@ export class PoolApp {
       }
 
       mesh.position.copy(point);
+      this._orientDimensionHandleToCamera(mesh, point);
       const screen = this._projectWorldToScreen(point);
       if (!screen) {
         mesh.visible = false;
@@ -875,10 +982,10 @@ export class PoolApp {
     if (!this.scene || !this.renderer) return;
 
     const meshes = {
-      shallow: this._makeDimensionHandleMesh("sectionShallow", "↕"),
-      deep: this._makeDimensionHandleMesh("sectionDeep", "↕"),
-      shallowFlat: this._makeDimensionHandleMesh("sectionShallowFlat", "↔"),
-      deepFlat: this._makeDimensionHandleMesh("sectionDeepFlat", "↔")
+      shallow: this._makeDimensionHandleMesh("sectionShallow"),
+      deep: this._makeDimensionHandleMesh("sectionDeep"),
+      shallowFlat: this._makeDimensionHandleMesh("sectionShallowFlat"),
+      deepFlat: this._makeDimensionHandleMesh("sectionDeepFlat")
     };
 
     Object.values(meshes).forEach((mesh) => this.scene.add(mesh));
@@ -1067,7 +1174,7 @@ export class PoolApp {
       sectionY: profile.sectionY
     };
 
-    handle.scale.set(0.68, 0.68, 0.68);
+    this._setDimensionHandleActive(handle, true);
     if (this.controls) this.controls.enabled = false;
     this._setLiveDragging(true);
   }
@@ -1118,7 +1225,7 @@ export class PoolApp {
   async _onSectionHandlePointerUp() {
     const drag = this.sectionDimensionHandles?.drag;
     if (!drag) return;
-    drag.handle?.scale?.set?.(0.62, 0.62, 0.62);
+    this._setDimensionHandleActive(drag.handle, false);
     this.sectionDimensionHandles.drag = null;
     if (this.controls) this.controls.enabled = true;
     await this._setLiveDragging(false);
@@ -1155,6 +1262,7 @@ export class PoolApp {
       }
 
       mesh.position.copy(point);
+      this._orientDimensionHandleToCamera(mesh, point);
       const screen = this._projectWorldToScreen(point);
       if (!screen) {
         mesh.visible = false;
@@ -6788,7 +6896,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const groundBounds = new THREE.Box3().setFromObject(ground);
     const pavingBounds = new THREE.Box3().setFromObject(standardPaving);
     const groundTop = Number.isFinite(groundBounds.max.z) ? groundBounds.max.z : 0;
-    const platformTop = Number.isFinite(pavingBounds.max.z) ? pavingBounds.max.z : groundTop + elevation;
+    const pavingTop = Number.isFinite(pavingBounds.max.z) ? pavingBounds.max.z : groundTop;
+    // The standard paving may still be at its pre-raised elevation when this
+    // method runs during a rebuild. Never use that stale level as the raised
+    // platform top: the platform must reach at least the selected pool elevation.
+    const platformTop = Math.max(pavingTop, groundTop + elevation);
     const platformHeight = Math.max(0.05, platformTop - groundTop);
 
     const geometry = new THREE.ExtrudeGeometry(shape, {
@@ -6958,6 +7070,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       this.applyPoolElevation();
       updateGroundVoid(this.ground || this.scene.userData.ground, this.poolGroup, this.spa);
       updateGrassForPool(this.scene, this.poolGroup);
+      // updateGroundVoid rebuilds the standard paving mesh. Reapply the raised
+      // state afterwards so the new paving is hidden and the entry platform is
+      // regenerated against the new pool shape at the correct elevation.
+      this.applyPoolElevation();
     }
 
     if (this.pbrManager && this.poolGroup) {
@@ -8423,6 +8539,48 @@ setupPoolEditor() {
   // --------------------------------------------------------------
   // SHAPE UI
   // --------------------------------------------------------------
+  async setPoolShape(shape, { captureUndo = true } = {}) {
+    const allowed = new Set(["rectangular", "freeform", "oval", "kidney", "L"]);
+    const nextShape = allowed.has(shape) ? shape : "rectangular";
+    if (this.poolParams.shape === nextShape && !this.isCustomShape) {
+      this.refreshDisplayedShapeLabel();
+      return;
+    }
+
+    if (captureUndo) this.captureUndoState("Shape change");
+    this.destroyPoolEditor();
+    this.poolParams.shape = nextShape;
+    this.baseShapeType = nextShape;
+    this.isCustomShape = false;
+
+    this.updateShapeUIVisibility();
+
+    if (nextShape === "freeform") {
+      this.editablePolygon = EditablePolygon.fromRectangle(
+        this.poolParams.length,
+        this.poolParams.width
+      );
+      this.editablePolygon.isRectangular = true;
+      this.editablePolygon.minVertices = 3;
+    } else {
+      this.editablePolygon = null;
+      this.destroyPoolEditor();
+      this._purgePoolEditorHandles();
+    }
+
+    this.syncSlidersFromParams();
+    await this.rebuildPoolForCurrentShape();
+
+    if (nextShape !== "freeform") {
+      this.destroyPoolEditor();
+      this._purgePoolEditorHandles();
+    }
+
+    try { this.caustics?.attachToGroup?.(this.poolGroup); } catch (_) {}
+    this.refreshDisplayedShapeLabel();
+    this._notifyDesignerStateChanged?.();
+  }
+
   setupShapeDropdown() {
     const select = document.getElementById("shape");
     if (!select) return;
@@ -8431,39 +8589,7 @@ setupPoolEditor() {
     this.refreshDisplayedShapeLabel();
 
     select.addEventListener("change", async (e) => {
-      this.captureUndoState("Shape change");
-      this.destroyPoolEditor();
-      this.poolParams.shape = e.target.value;
-      this.baseShapeType = this.poolParams.shape;
-      this.isCustomShape = false;
-
-      this.updateShapeUIVisibility();
-
-      if (this.poolParams.shape === "freeform") {
-        this.editablePolygon = EditablePolygon.fromRectangle(
-          this.poolParams.length,
-          this.poolParams.width
-        );
-        this.editablePolygon.isRectangular = true;
-        this.editablePolygon.minVertices = 3;
-      } else {
-        this.editablePolygon = null;
-        this.destroyPoolEditor();
-        this._purgePoolEditorHandles();
-      }
-
-      // keep UI in sync with current params, including shape
-      this.syncSlidersFromParams();
-
-      await this.rebuildPoolForCurrentShape();
-      if (this.poolParams.shape !== "freeform") {
-        this.destroyPoolEditor();
-        this._purgePoolEditorHandles();
-      }
-
-      // Final defensive attach (in case materials changed during rebuild)
-      try { this.caustics?.attachToGroup?.(this.poolGroup); } catch (_) {}
-      this.refreshDisplayedShapeLabel();
+      await this.setPoolShape(e.target.value);
     });
   }
 
