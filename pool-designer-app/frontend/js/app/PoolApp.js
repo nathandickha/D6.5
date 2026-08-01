@@ -313,55 +313,145 @@ export class PoolApp {
     const ctx = canvas.getContext("2d");
     const cx = size / 2;
     const cy = size / 2;
-    const radius = 43;
 
-    ctx.clearRect(0, 0, size, size);
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(250,249,246,0.84)";
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(35,39,42,0.22)";
-    ctx.stroke();
+    const isElevation = String(key).toLowerCase().includes("elevation");
+    const isDepth = axisInfo.axis === "z" && !isElevation;
+    const tooltip = isElevation
+      ? "Adjust height"
+      : isDepth
+        ? "Adjust depth"
+        : String(key).toLowerCase().includes("width") || String(key).toLowerCase().includes("top") || String(key).toLowerCase().includes("bottom")
+          ? "Adjust width"
+          : "Adjust length";
 
-    ctx.strokeStyle = "#303438";
-    ctx.fillStyle = "#303438";
-    ctx.lineWidth = 3.2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    const left = cx - 21;
-    const right = cx + 21;
-    ctx.beginPath();
-    ctx.moveTo(left, cy);
-    ctx.lineTo(right, cy);
-    ctx.stroke();
-    const arrow = 7;
-    ctx.beginPath();
-    ctx.moveTo(left, cy); ctx.lineTo(left + arrow, cy - arrow); ctx.moveTo(left, cy); ctx.lineTo(left + arrow, cy + arrow);
-    ctx.moveTo(right, cy); ctx.lineTo(right - arrow, cy - arrow); ctx.moveTo(right, cy); ctx.lineTo(right - arrow, cy + arrow);
-    ctx.stroke();
+    const draw = (active = false) => {
+      ctx.clearRect(0, 0, size, size);
 
+      // Compact EasyShed-inspired architectural control: a small circular
+      // surface with a functional icon. Axis letters are intentionally omitted.
+      ctx.beginPath();
+      ctx.arc(cx, cy, 31, 0, Math.PI * 2);
+      ctx.fillStyle = active ? "rgba(226,239,244,0.98)" : "rgba(250,249,246,0.82)";
+      ctx.fill();
+      ctx.lineWidth = active ? 2.2 : 1.5;
+      ctx.strokeStyle = active ? "rgba(20,91,119,0.92)" : "rgba(38,43,47,0.28)";
+      ctx.stroke();
+
+      ctx.strokeStyle = active ? "#155b77" : "#34393d";
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      if (isElevation) {
+        // Vertical elevation arrow above a short datum/base line.
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + 14);
+        ctx.lineTo(cx, cy - 14);
+        ctx.moveTo(cx, cy - 14);
+        ctx.lineTo(cx - 6, cy - 7);
+        ctx.moveTo(cx, cy - 14);
+        ctx.lineTo(cx + 6, cy - 7);
+        ctx.moveTo(cx - 11, cy + 14);
+        ctx.lineTo(cx + 11, cy + 14);
+        ctx.stroke();
+      } else if (isDepth) {
+        // Discreet vertical double arrow for pool/spa depth.
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 14);
+        ctx.lineTo(cx, cy + 14);
+        ctx.moveTo(cx, cy - 14);
+        ctx.lineTo(cx - 5, cy - 8);
+        ctx.moveTo(cx, cy - 14);
+        ctx.lineTo(cx + 5, cy - 8);
+        ctx.moveTo(cx, cy + 14);
+        ctx.lineTo(cx - 5, cy + 8);
+        ctx.moveTo(cx, cy + 14);
+        ctx.lineTo(cx + 5, cy + 8);
+        ctx.stroke();
+      } else {
+        // Contextual edge/corner resize icon, similar in principle to EasyShed.
+        // The entire sprite is rotated to the projected world axis by the camera.
+        ctx.beginPath();
+        ctx.moveTo(cx - 13, cy + 11);
+        ctx.lineTo(cx - 13, cy - 11);
+        ctx.lineTo(cx + 9, cy - 11);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx - 3, cy + 8);
+        ctx.lineTo(cx + 13, cy + 8);
+        ctx.moveTo(cx + 13, cy + 8);
+        ctx.lineTo(cx + 7, cy + 3);
+        ctx.moveTo(cx + 13, cy + 8);
+        ctx.lineTo(cx + 7, cy + 13);
+        ctx.stroke();
+      }
+    };
+
+    draw(false);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.needsUpdate = true;
-    const material = new THREE.SpriteMaterial({ map:texture, transparent:true, depthTest:false, depthWrite:false, sizeAttenuation:true, opacity:0.84 });
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      sizeAttenuation: true,
+      opacity: 0.82
+    });
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(0.34, 0.34, 1);
+    sprite.scale.set(0.22, 0.22, 1);
     sprite.renderOrder = 2100;
     sprite.frustumCulled = false;
     sprite.userData.handleKey = key;
     sprite.userData.handleAxis = axisInfo.axis;
     sprite.userData.handleAxisVector = axisInfo.vector;
     sprite.userData.isDimensionHandle = true;
-    sprite.userData.tooltip = key.includes('elevation') ? 'Adjust height' : key.includes('shallow') || key.includes('deep') ? 'Adjust depth' : key.includes('width') ? 'Adjust width' : 'Adjust length';
+    sprite.userData.tooltip = tooltip;
+    sprite.userData.redrawHandle = draw;
     return sprite;
   }
 
   _setDimensionHandleActive(mesh, active) {
     if (!mesh) return;
-    mesh.scale.setScalar(active ? 0.37 : 0.34);
-    mesh.scale.z = 1;
-    if (mesh.material) mesh.material.opacity = active ? 1 : 0.84;
+    mesh.userData.isHandleActive = !!active;
+    if (mesh.material) mesh.material.opacity = active ? 1 : 0.82;
+    mesh.userData?.redrawHandle?.(!!active);
+    if (mesh.material?.map) mesh.material.map.needsUpdate = true;
+
+    // During a drag, keep only the active handle visible. This mirrors the
+    // contextual EasyShed interaction and removes visual competition.
+    const families = [this.dimensionHandles?.meshes, this.spaDimensionHandles?.meshes, this.sectionDimensionHandles?.meshes];
+    families.forEach((family) => {
+      Object.values(family || {}).forEach((other) => {
+        if (!other || other === mesh) return;
+        if (active) {
+          other.userData.wasVisibleBeforeDrag = other.visible;
+          other.visible = false;
+        } else if (other.userData.wasVisibleBeforeDrag) {
+          other.visible = true;
+          delete other.userData.wasVisibleBeforeDrag;
+        }
+      });
+    });
+  }
+
+  _applyDimensionHandleScreenScale(mesh, worldPoint) {
+    if (!mesh || !worldPoint || !this.camera || !this.renderer) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const targetPixels = mesh.userData?.isHandleActive ? 36 : 33;
+    let worldSize = 0.22;
+    if (this.camera.isPerspectiveCamera) {
+      const distance = this.camera.position.distanceTo(worldPoint);
+      const visibleWorldHeight = 2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) * 0.5) * distance;
+      worldSize = visibleWorldHeight * (targetPixels / Math.max(1, rect.height));
+    } else if (this.camera.isOrthographicCamera) {
+      const visibleWorldHeight = (this.camera.top - this.camera.bottom) / Math.max(0.001, this.camera.zoom || 1);
+      worldSize = visibleWorldHeight * (targetPixels / Math.max(1, rect.height));
+    }
+    worldSize = THREE.MathUtils.clamp(worldSize, 0.13, 0.30);
+    mesh.scale.set(worldSize, worldSize, 1);
   }
 
   _orientDimensionHandleToCamera(mesh, worldPoint) {
@@ -413,6 +503,8 @@ export class PoolApp {
       mouse: new THREE.Vector2()
     };
 
+    if (!this._activeHandleContext) this._activeHandleContext = "pool";
+
     this._boundDimensionHandlePointerDown = (event) => this._onDimensionHandlePointerDown(event);
     this._boundDimensionHandlePointerMove = (event) => this._onDimensionHandlePointerMove(event);
     this._boundDimensionHandlePointerUp = () => this._onDimensionHandlePointerUp();
@@ -425,14 +517,14 @@ export class PoolApp {
       ray.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), this.camera);
       if (this.spa) {
         const spaHits = ray.intersectObjects(this.getSpaSelectionMeshes?.() || [], true);
-        if (spaHits.length) { this._notifyDesignerInteraction?.("spa"); return; }
+        if (spaHits.length) { this._activeHandleContext = "spa"; this._notifyDesignerInteraction?.("spa"); return; }
       }
       const poolMeshes = [];
       this.poolGroup.traverse((obj) => {
         const ud = obj?.userData || {};
         if (obj?.isMesh && (ud.isWall || ud.isFloor || ud.isCoping || ud.isStep || ud.isBench)) poolMeshes.push(obj);
       });
-      if (poolMeshes.length && ray.intersectObjects(poolMeshes, true).length) this._notifyDesignerInteraction?.("pool");
+      if (poolMeshes.length && ray.intersectObjects(poolMeshes, true).length) { this._activeHandleContext = "pool"; this._notifyDesignerInteraction?.("pool"); }
     };
     this.renderer.domElement.addEventListener("pointerdown", this._boundExternalPanelFocusPointerDown, true);
     window.addEventListener("pointermove", this._boundDimensionHandlePointerMove);
@@ -573,6 +665,7 @@ export class PoolApp {
     const key = handle?.userData?.handleKey;
     if (!key) return;
 
+    this._activeHandleContext = "pool";
     this._notifyDesignerInteraction?.("pool");
     event.preventDefault();
     event.stopPropagation();
@@ -701,14 +794,17 @@ export class PoolApp {
 
     const margin = 14;
     const isLShape = this.poolParams?.shape === "L";
+    const poolContextActive = !this.spa || this._activeHandleContext !== "spa";
+    const primaryPoolHandles = new Set(["right", "top", "notchLength", "notchWidth", "elevation"]);
     Object.entries(this.dimensionHandles.meshes).forEach(([key, mesh]) => {
       const point = targets[key];
-      if (!mesh || !point || ((key === "notchLength" || key === "notchWidth") && !isLShape) || (key === "elevation" && !this.poolParams?.raised)) {
+      if (!poolContextActive || !primaryPoolHandles.has(key) || !mesh || !point || ((key === "notchLength" || key === "notchWidth") && !isLShape) || (key === "elevation" && !this.poolParams?.raised)) {
         if (mesh) mesh.visible = false;
         return;
       }
 
       mesh.position.copy(point);
+      this._applyDimensionHandleScreenScale(mesh, point);
       this._orientDimensionHandleToCamera(mesh, point);
       const screen = this._projectWorldToScreen(point);
       if (!screen) {
@@ -804,6 +900,7 @@ export class PoolApp {
     const key = handle?.userData?.handleKey;
     if (!key) return;
 
+    this._activeHandleContext = "spa";
     this._notifyDesignerInteraction?.("spa");
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -917,14 +1014,18 @@ export class PoolApp {
     if (!targets) return;
 
     const margin = 14;
+    const spaContextActive = this._activeHandleContext === "spa";
+    const primarySpaHandles = new Set(["right", "top"]);
     Object.entries(this.spaDimensionHandles.meshes).forEach(([key, mesh]) => {
-      const point = targets[key.replace("spa","").toLowerCase()] || targets[key];
-      if (!mesh || !point) {
+      const targetKey = key.replace("spa","").toLowerCase();
+      const point = targets[targetKey] || targets[key];
+      if (!spaContextActive || !primarySpaHandles.has(targetKey) || !mesh || !point) {
         if (mesh) mesh.visible = false;
         return;
       }
 
       mesh.position.copy(point);
+      this._applyDimensionHandleScreenScale(mesh, point);
       this._orientDimensionHandleToCamera(mesh, point);
       const screen = this._projectWorldToScreen(point);
       if (!screen) {
@@ -1229,6 +1330,7 @@ export class PoolApp {
       }
 
       mesh.position.copy(point);
+      this._applyDimensionHandleScreenScale(mesh, point);
       this._orientDimensionHandleToCamera(mesh, point);
       const screen = this._projectWorldToScreen(point);
       if (!screen) {
