@@ -773,20 +773,6 @@ function setupStarterPresetScreen() {
         if (window.parent !== window) window.parent.postMessage({ source:"atelier3d-designer", type:"DESIGN_LOAD_FAILED", payload:{presetId:preset.id,message:err?.message||"Designer failed to load"} }, window.location.origin);
       }
     });
-        await appBootPromise;
-      } catch (err) {
-        console.error("[PoolApp] Failed to start 3D editor", err);
-        if (window.parent !== window) {
-          window.parent.postMessage({
-            source: "atelier3d-designer",
-            type: "DESIGN_LOAD_FAILED",
-            payload: { presetId: preset.id, message: err?.message || "Designer failed to load" }
-          }, window.location.origin);
-        }
-        appBootPromise = null;
-        setStarterBusy(card, false);
-      }
-    });
 
     grid.appendChild(card);
     // Keep the starter page lightweight and static. The previous per-card
