@@ -14,6 +14,19 @@
 
 <body>
 
+
+  <div id="projectRecoveryModal" class="project-recovery" hidden>
+    <div class="project-recovery-card" role="dialog" aria-modal="true" aria-labelledby="projectRecoveryTitle">
+      <p class="starter-kicker">Welcome back</p>
+      <h2 id="projectRecoveryTitle">Load an existing project</h2>
+      <button id="loadExistingProject" class="recovery-project" type="button">
+        <div id="recoveryPreview" class="starter-preview" data-preview="rectangle" aria-hidden="true"></div>
+        <div><strong>Last pool design</strong><span id="recoveryModified">Last modified</span></div>
+      </button>
+      <button id="createNewProject" class="recovery-new" type="button">Create a new project</button>
+    </div>
+  </div>
+
   <!-- Startup preset chooser -->
   <div id="starterPresetOverlay" class="starter-overlay" aria-modal="true" role="dialog">
     <div class="starter-panel">
