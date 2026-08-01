@@ -368,3 +368,18 @@ body:not(.home-page){
 }
 
 @media(max-width:1050px) and (min-width:761px){.feature-grid,.steps-grid,.role-grid,.design-grid{grid-template-columns:repeat(2,1fr)}}
+
+
+/* Four-tile product previews in the external Interior Finish controls. */
+.pool-designer-page .tile-swatch-grid i {
+  width:42px;
+  height:42px;
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+  border-color:rgba(20,20,20,.14);
+}
+.pool-designer-page .tile-swatch-grid button {
+  grid-template-columns:42px minmax(0,1fr);
+  min-height:54px;
+}
