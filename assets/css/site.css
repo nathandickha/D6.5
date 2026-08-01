@@ -1,7 +1,7 @@
 
 :root{
   --ink:#141414;--muted:#716e6a;--line:#deddd9;--soft:#f7f6f3;
-  --blue:#124d69;--warm:#8f7356;--max:1180px
+  --blue:#124d69;--warm:#8f7356;--max:1440px
 }
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);
 font-family:Inter,Arial,Helvetica,sans-serif;background:#fff;font-size:16px;line-height:1.55}
@@ -33,11 +33,11 @@ url("../images/infinity-edge.jpg") center/cover no-repeat;display:flex;align-ite
 .section-head h2,.page-title{font-weight:300;letter-spacing:-.04em;line-height:1.03;margin:0}
 .section-head h2{font-size:clamp(42px,5vw,67px);max-width:680px}.page-title{font-size:clamp(48px,6vw,82px)}
 .lead{font-size:20px;max-width:650px;color:var(--muted);margin-top:24px}
-.feature-grid,.steps-grid,.role-grid{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.feature-grid,.steps-grid,.role-grid{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);border-left:1px solid var(--line)}
 .feature-card,.step-card,.role-card{padding:36px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-height:175px}
 .feature-card h3,.step-card h3,.role-card h3{font-size:19px;font-weight:500;margin:16px 0 10px}
-.feature-card p,.step-card p,.role-card p{color:var(--muted);font-size:14px;margin:0}.icon{font-size:18px;color:var(--blue)}
-.design-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:28px}
+.feature-card p,.step-card p,.role-card p{color:var(--muted);font-size:14px;margin:0}.icon{width:24px;height:24px;color:var(--blue)}.icon svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round}
+.design-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
 .design-card{border:1px solid var(--line);background:#fff}.design-card img{width:100%;aspect-ratio:1.52/1;object-fit:cover}
 .design-copy{padding:26px 28px 28px;position:relative}.design-copy h3{font-size:28px;font-weight:400;margin:0 0 6px;letter-spacing:-.03em}
 .design-copy p{margin:0;color:#8b8782}.arrow{position:absolute;right:27px;top:28px;color:#8b8782}
@@ -366,3 +366,5 @@ body:not(.home-page){
 #spaControlsSection .control-content :disabled {
   cursor: not-allowed;
 }
+
+@media(max-width:1050px) and (min-width:761px){.feature-grid,.steps-grid,.role-grid,.design-grid{grid-template-columns:repeat(2,1fr)}}
