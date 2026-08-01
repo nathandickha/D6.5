@@ -304,69 +304,28 @@ export class PoolApp {
     return { axis: "x", vector: new THREE.Vector3(1, 0, 0), label: "X" };
   }
 
-  _makeDimensionHandleMesh(key) {
+  _makeDimensionHandleMesh(key, arrow = "↔") {
     const axisInfo = this._getHandleAxisInfo(key);
-    const width = 256;
-    const height = 96;
+    const size = 128;
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = size;
+    canvas.height = size;
     const ctx = canvas.getContext("2d");
 
-    ctx.clearRect(0, 0, width, height);
-    const x = 9;
-    const y = 12;
-    const w = width - 18;
-    const h = height - 24;
-    const r = h * 0.5;
-
+    ctx.clearRect(0, 0, size, size);
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-    ctx.fillStyle = "rgba(250,249,246,0.97)";
+    ctx.arc(size * 0.5, size * 0.5, size * 0.34, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.98)";
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(34,38,42,0.22)";
+    ctx.strokeStyle = "rgba(0,0,0,0.18)";
     ctx.stroke();
 
-    ctx.strokeStyle = "#225f78";
-    ctx.fillStyle = "#225f78";
-    ctx.lineWidth = 5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    const cy = height * 0.5;
-    const left = 43;
-    const right = width - 43;
-    ctx.beginPath();
-    ctx.moveTo(left, cy);
-    ctx.lineTo(right, cy);
-    ctx.stroke();
-
-    const arrow = 12;
-    ctx.beginPath();
-    ctx.moveTo(left, cy);
-    ctx.lineTo(left + arrow, cy - arrow * 0.75);
-    ctx.lineTo(left + arrow, cy + arrow * 0.75);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(right, cy);
-    ctx.lineTo(right - arrow, cy - arrow * 0.75);
-    ctx.lineTo(right - arrow, cy + arrow * 0.75);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(width * 0.5, cy, 17, 0, Math.PI * 2);
-    ctx.fillStyle = "#f7f6f2";
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(34,38,42,0.18)";
-    ctx.stroke();
-    ctx.fillStyle = "#25282b";
-    ctx.font = "600 21px Arial";
+    ctx.fillStyle = "#1d1d1d";
+    ctx.font = "700 46px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(axisInfo.label, width * 0.5, cy + 1);
+    ctx.fillText(arrow, size * 0.5, size * 0.52);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -376,12 +335,11 @@ export class PoolApp {
       map: texture,
       transparent: true,
       depthTest: false,
-      depthWrite: false,
-      sizeAttenuation: true
+      depthWrite: false
     });
 
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(0.86, 0.32, 1);
+    sprite.scale.set(0.62, 0.62, 0.62);
     sprite.renderOrder = 2100;
     sprite.frustumCulled = false;
     sprite.userData.handleKey = key;
@@ -393,8 +351,9 @@ export class PoolApp {
 
   _setDimensionHandleActive(mesh, active) {
     if (!mesh) return;
-    mesh.scale.set(active ? 1.0 : 0.86, active ? 0.37 : 0.32, 1);
-    if (mesh.material) mesh.material.opacity = active ? 1 : 0.96;
+    const scale = active ? 0.68 : 0.62;
+    mesh.scale.set(scale, scale, scale);
+    if (mesh.material) mesh.material.opacity = active ? 1 : 0.98;
   }
 
   _orientDimensionHandleToCamera(mesh, worldPoint) {
@@ -428,13 +387,13 @@ export class PoolApp {
     if (!this.scene || !this.renderer) return;
 
     const meshes = {
-      top: this._makeDimensionHandleMesh("top"),
-      bottom: this._makeDimensionHandleMesh("bottom"),
-      left: this._makeDimensionHandleMesh("left"),
-      right: this._makeDimensionHandleMesh("right"),
-      notchLength: this._makeDimensionHandleMesh("notchLength"),
-      notchWidth: this._makeDimensionHandleMesh("notchWidth"),
-      elevation: this._makeDimensionHandleMesh("poolElevation")
+      top: this._makeDimensionHandleMesh("top", "↕"),
+      bottom: this._makeDimensionHandleMesh("bottom", "↕"),
+      left: this._makeDimensionHandleMesh("left", "↔"),
+      right: this._makeDimensionHandleMesh("right", "↔"),
+      notchLength: this._makeDimensionHandleMesh("notchLength", "↔"),
+      notchWidth: this._makeDimensionHandleMesh("notchWidth", "↕"),
+      elevation: this._makeDimensionHandleMesh("poolElevation", "↕")
     };
 
     Object.values(meshes).forEach((mesh) => this.scene.add(mesh));
@@ -549,7 +508,11 @@ export class PoolApp {
     if (!this.poolGroup) return null;
 
     const shape = this.poolParams?.shape;
-    const z = 0.0;
+    const poolBounds = new THREE.Box3().setFromObject(this.poolGroup);
+    if (!poolBounds || poolBounds.isEmpty()) return null;
+    // Pin every pool handle to the current top of the coping/pool assembly.
+    // Because this is derived from world bounds it follows raised-pool elevation.
+    const z = poolBounds.max.z + 0.01;
     const out = 0.01;
 
     if (shape === "L" && Array.isArray(this.poolGroup?.userData?.outerPts) && this.poolGroup.userData.outerPts.length >= 6) {
@@ -575,9 +538,7 @@ export class PoolApp {
       return targets;
     }
 
-    const box = new THREE.Box3().setFromObject(this.poolGroup);
-    if (!box || box.isEmpty()) return null;
-
+    const box = poolBounds;
     const center = box.getCenter(new THREE.Vector3());
 
     return {
@@ -766,10 +727,10 @@ export class PoolApp {
     if (!this.scene || !this.renderer) return;
 
     const meshes = {
-      top: this._makeDimensionHandleMesh("spaTop"),
-      bottom: this._makeDimensionHandleMesh("spaBottom"),
-      left: this._makeDimensionHandleMesh("spaLeft"),
-      right: this._makeDimensionHandleMesh("spaRight")
+      top: this._makeDimensionHandleMesh("spaTop", "↕"),
+      bottom: this._makeDimensionHandleMesh("spaBottom", "↕"),
+      left: this._makeDimensionHandleMesh("spaLeft", "↔"),
+      right: this._makeDimensionHandleMesh("spaRight", "↔")
     };
 
     Object.values(meshes).forEach((mesh) => this.scene.add(mesh));
@@ -795,7 +756,11 @@ export class PoolApp {
     if (!this.spa) return null;
     const cx = Number(this.spa.position.x) || 0;
     const cy = Number(this.spa.position.y) || 0;
-    const z = 0;
+    const spaBounds = new THREE.Box3().setFromObject(this.spa);
+    if (!spaBounds || spaBounds.isEmpty()) return null;
+    // Pin the existing length/width handles to the top of the spa. The same
+    // handles retain their resize-or-elevation gesture and move with raised spas.
+    const z = spaBounds.max.z + 0.01;
     const out = 0.01;
     const length = Math.max(0.5, Number(this.spa.userData?.spaLength) || 2);
     const width = Math.max(0.5, Number(this.spa.userData?.spaWidth) || 2);
@@ -1010,10 +975,10 @@ export class PoolApp {
     if (!this.scene || !this.renderer) return;
 
     const meshes = {
-      shallow: this._makeDimensionHandleMesh("sectionShallow"),
-      deep: this._makeDimensionHandleMesh("sectionDeep"),
-      shallowFlat: this._makeDimensionHandleMesh("sectionShallowFlat"),
-      deepFlat: this._makeDimensionHandleMesh("sectionDeepFlat")
+      shallow: this._makeDimensionHandleMesh("sectionShallow", "↕"),
+      deep: this._makeDimensionHandleMesh("sectionDeep", "↕"),
+      shallowFlat: this._makeDimensionHandleMesh("sectionShallowFlat", "↔"),
+      deepFlat: this._makeDimensionHandleMesh("sectionDeepFlat", "↔")
     };
 
     Object.values(meshes).forEach((mesh) => this.scene.add(mesh));
