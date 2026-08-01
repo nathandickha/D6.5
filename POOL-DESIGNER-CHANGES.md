@@ -29,3 +29,11 @@ This package updates only the Pool Designer experience and its bundled Three.js 
 - Its vertical paving faces extend down to the unchanged ground/paving level.
 - Lowering the pool restores the normal full perimeter paving.
 
+
+## Camera-aware 3D manipulation handles
+- Replaced circular Unicode-arrow sprites with compact Atelier-style capsule gizmos.
+- Each gizmo is labelled by its world axis (X, Y or Z).
+- Gizmos rotate on screen from the current camera projection, so dragging follows the visible world-axis direction.
+- Pool and spa X/Y resizing now projects pointer movement onto the relevant world axis rather than assuming horizontal/vertical screen movement.
+- Added a Z-axis elevation gizmo for raised pools, allowing the raised height to be adjusted directly in the model from 0.1 m to 1.5 m.
+- Section-view depth handles use the same Z-axis visual language.
