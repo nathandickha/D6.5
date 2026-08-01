@@ -775,5 +775,35 @@ export class PBRManager {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
     });
+
+    // The channel is a sibling of the spa under the scene, so explicitly keep
+    // its floor and wall finishes synchronised with the selected pool tile.
+    const channelGroup = spa.parent?.getObjectByName?.("SpaChannelGroup") || null;
+    await this.applyTilesToSpaChannel(channelGroup, maps);
+  }
+
+  async applyTilesToSpaChannel(channelGroup, loadedMaps = null) {
+    if (!channelGroup) return;
+
+    const maps = loadedMaps || await this.ensureTileLoaded(this.currentTileKey);
+    if (!maps || !maps.map) return;
+
+    channelGroup.traverse((mesh) => {
+      if (!mesh.isMesh || !mesh.userData?.isSpaChannel) return;
+      // Channel coping continues to use the selected coping material.
+      if (mesh.userData?.spaChannelPart === "coping") return;
+
+      const surfaceKind = this.getSurfaceKind(mesh, "spa");
+      this.ensureAoUv(mesh);
+      const mat = this.buildTileMaterial(maps, mesh, surfaceKind);
+
+      this.caustics?.addToMaterial?.(mat);
+
+      this.disposePreviousMaterial(mesh);
+      mesh.material = mat;
+      mesh.material.needsUpdate = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
   }
 }
