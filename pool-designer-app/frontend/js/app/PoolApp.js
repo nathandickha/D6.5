@@ -7259,59 +7259,184 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
   _createInfinityEdge(group, length, width) {
     if (!this.poolParams?.raised) return;
+
     const entry = this._getEntryStepInfo(length, width);
     const side = this._oppositeSide(entry.side);
     const frame = this._sideFrame(side, length, width, 0);
     const span = Math.max(1.6, frame.span * 0.72);
     const groundZ = this._getGroundTopLocalZ();
     const poolTop = 0.02;
-    const tankTop = groundZ + 0.08;
-    const tankDepth = 0.5;
-    const outsideCenter = frame.center.clone().addScaledVector(frame.inward, -0.48);
     const tiled = this._getPoolTileMaterial();
-    const water = this._getSpaStyleSpillMaterial();
+    const spillMaterial = this._getSpaStyleSpillMaterial();
     const alongX = Math.abs(frame.tangent.x) > 0.5;
 
-    // Remove coping only along the active overflow wall, matching the spa's
-    // knife-edge detail rather than leaving a conventional coping cap.
+    // Match the spa infinity detail: remove conventional coping on the active
+    // edge and replace it with a thin tiled knife edge integrated into a solid
+    // overflow wall box.
     this._hideInfinityEdgeCoping(side, frame, span);
 
-    // Thin tiled knife edge located at the pool waterline. It is deliberately
-    // narrow so the water visually rolls over the outside face like the spa.
-    const knifeDepth = 0.045;
-    const knifeWidth = 0.055;
-    const knifeCenter = frame.center.clone().addScaledVector(frame.inward, -knifeWidth * 0.25);
+    const overflowWallThickness = 0.20;
+    const overflowWallHeight = Math.max(0.20, poolTop - groundZ);
+    const overflowWallCenter = frame.center.clone().addScaledVector(
+      frame.inward,
+      -overflowWallThickness * 0.5
+    );
+
+    const overflowWallGeometry = alongX
+      ? new THREE.BoxGeometry(span, overflowWallThickness, overflowWallHeight)
+      : new THREE.BoxGeometry(overflowWallThickness, span, overflowWallHeight);
+
+    this._addFeatureMesh(
+      group,
+      overflowWallGeometry,
+      tiled.clone(),
+      {
+        x: overflowWallCenter.x,
+        y: overflowWallCenter.y,
+        z: groundZ + overflowWallHeight * 0.5
+      },
+      null,
+      'infinity-overflow-wall-box'
+    );
+
+    // Thin knife edge directly on top of the overflow wall, matching the spa
+    // lip rather than appearing as a separate raised coping strip.
+    const knifeThickness = 0.045;
+    const knifeDepth = 0.055;
+    const knifeCenter = frame.center.clone().addScaledVector(
+      frame.inward,
+      -overflowWallThickness + knifeDepth * 0.5
+    );
     const knifeGeometry = alongX
-      ? new THREE.BoxGeometry(span, knifeWidth, knifeDepth)
-      : new THREE.BoxGeometry(knifeWidth, span, knifeDepth);
-    this._addFeatureMesh(group, knifeGeometry, tiled.clone(),
-      { x:knifeCenter.x, y:knifeCenter.y, z:poolTop - knifeDepth / 2 }, null, 'infinity-knife-edge');
+      ? new THREE.BoxGeometry(span, knifeDepth, knifeThickness)
+      : new THREE.BoxGeometry(knifeDepth, span, knifeThickness);
 
-    const tankL = alongX ? span : 0.75;
-    const tankW = alongX ? 0.75 : span;
-    const wallT = 0.12;
-    const wallH = tankDepth;
-    this._addFeatureMesh(group, new THREE.BoxGeometry(tankL, tankW, 0.1), tiled.clone(),
-      {x:outsideCenter.x,y:outsideCenter.y,z:tankTop-tankDepth}, null, 'infinity-catch-floor');
-    this._addFeatureMesh(group, new THREE.BoxGeometry(tankL, wallT, wallH), tiled.clone(),
-      {x:outsideCenter.x,y:outsideCenter.y+(tankW/2-wallT/2),z:tankTop-wallH/2}, null, 'infinity-catch-wall-a');
-    this._addFeatureMesh(group, new THREE.BoxGeometry(tankL, wallT, wallH), tiled.clone(),
-      {x:outsideCenter.x,y:outsideCenter.y-(tankW/2-wallT/2),z:tankTop-wallH/2}, null, 'infinity-catch-wall-b');
-    this._addFeatureMesh(group, new THREE.BoxGeometry(wallT, tankW, wallH), tiled.clone(),
-      {x:outsideCenter.x+(tankL/2-wallT/2),y:outsideCenter.y,z:tankTop-wallH/2}, null, 'infinity-catch-wall-c');
-    this._addFeatureMesh(group, new THREE.BoxGeometry(wallT, tankW, wallH), tiled.clone(),
-      {x:outsideCenter.x-(tankL/2-wallT/2),y:outsideCenter.y,z:tankTop-wallH/2}, null, 'infinity-catch-wall-d');
-    this._addFeatureMesh(group, new THREE.BoxGeometry(Math.max(0.1,tankL-wallT*2), Math.max(0.1,tankW-wallT*2), 0.025), water.clone(),
-      {x:outsideCenter.x,y:outsideCenter.y,z:tankTop-0.02}, null, 'infinity-catch-water');
+    this._addFeatureMesh(
+      group,
+      knifeGeometry,
+      tiled.clone(),
+      {
+        x: knifeCenter.x,
+        y: knifeCenter.y,
+        z: poolTop - knifeThickness * 0.5
+      },
+      null,
+      'infinity-knife-edge'
+    );
 
-    // Spa-style vertical spill sheet located immediately outside the knife edge.
-    const sheetCenter = frame.center.clone().addScaledVector(frame.inward, -0.055);
-    const sheetHeight = Math.max(0.25, poolTop - tankTop);
-    const sheet = this._addFeatureMesh(group, new THREE.PlaneGeometry(span, sheetHeight), water,
-      {x:sheetCenter.x,y:sheetCenter.y,z:tankTop+sheetHeight/2}, null, 'infinity-water-sheet');
-    sheet.rotation.x = Math.PI / 2;
-    if (!alongX) sheet.rotation.z = Math.PI / 2;
+    // Recessed catch tank, immediately outside the spill wall. Its opening is
+    // at the ground plane and the tiled tank body extends below ground.
+    const tankDepth = 0.55;
+    const tankClearWidth = 0.72;
+    const tankWallThickness = 0.10;
+    const tankTop = groundZ + 0.015;
+    const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
+    const tankCenter = frame.center.clone().addScaledVector(
+      frame.inward,
+      -(overflowWallThickness + tankOuterWidth * 0.5)
+    );
+    const tankLength = span;
+    const tankWidth = tankOuterWidth;
+    const tankWallHeight = tankDepth;
+
+    this._addFeatureMesh(
+      group,
+      new THREE.BoxGeometry(
+        alongX ? tankLength : tankWidth,
+        alongX ? tankWidth : tankLength,
+        0.10
+      ),
+      tiled.clone(),
+      {
+        x: tankCenter.x,
+        y: tankCenter.y,
+        z: tankTop - tankDepth
+      },
+      null,
+      'infinity-catch-floor'
+    );
+
+    const longWallGeometry = alongX
+      ? new THREE.BoxGeometry(tankLength, tankWallThickness, tankWallHeight)
+      : new THREE.BoxGeometry(tankWallThickness, tankLength, tankWallHeight);
+    const shortWallGeometry = alongX
+      ? new THREE.BoxGeometry(tankWallThickness, tankWidth, tankWallHeight)
+      : new THREE.BoxGeometry(tankWidth, tankWallThickness, tankWallHeight);
+
+    const normal = frame.inward.clone().normalize();
+    const tangent = frame.tangent.clone().normalize();
+    const halfNormal = tankWidth * 0.5 - tankWallThickness * 0.5;
+    const halfTangent = tankLength * 0.5 - tankWallThickness * 0.5;
+    const wallZ = tankTop - tankWallHeight * 0.5;
+
+    for (const [name, pos] of [
+      ['infinity-catch-wall-inner', tankCenter.clone().addScaledVector(normal, halfNormal)],
+      ['infinity-catch-wall-outer', tankCenter.clone().addScaledVector(normal, -halfNormal)]
+    ]) {
+      this._addFeatureMesh(group, longWallGeometry.clone(), tiled.clone(),
+        { x: pos.x, y: pos.y, z: wallZ }, null, name);
+    }
+    for (const [name, pos] of [
+      ['infinity-catch-wall-end-a', tankCenter.clone().addScaledVector(tangent, halfTangent)],
+      ['infinity-catch-wall-end-b', tankCenter.clone().addScaledVector(tangent, -halfTangent)]
+    ]) {
+      this._addFeatureMesh(group, shortWallGeometry.clone(), tiled.clone(),
+        { x: pos.x, y: pos.y, z: wallZ }, null, name);
+    }
+
+    const catchWaterGeometry = alongX
+      ? new THREE.BoxGeometry(
+          Math.max(0.1, tankLength - tankWallThickness * 2),
+          Math.max(0.1, tankWidth - tankWallThickness * 2),
+          0.025
+        )
+      : new THREE.BoxGeometry(
+          Math.max(0.1, tankWidth - tankWallThickness * 2),
+          Math.max(0.1, tankLength - tankWallThickness * 2),
+          0.025
+        );
+
+    this._addFeatureMesh(
+      group,
+      catchWaterGeometry,
+      spillMaterial.clone(),
+      { x: tankCenter.x, y: tankCenter.y, z: tankTop - 0.025 },
+      null,
+      'infinity-catch-water'
+    );
+
+    // Spa-style water sheet running down the outside face of the wall box.
+    // It is flush to the exterior face so the water visibly rolls over the
+    // knife edge and down the wall rather than floating in front of it.
+    const outsideFace = frame.center.clone().addScaledVector(
+      frame.inward,
+      -(overflowWallThickness + 0.006)
+    );
+    const sheetBottom = tankTop;
+    const sheetHeight = Math.max(0.20, poolTop - sheetBottom);
+    const sheet = new THREE.Mesh(
+      new THREE.PlaneGeometry(span, sheetHeight, 1, 1),
+      spillMaterial
+    );
+    sheet.name = 'infinity-water-sheet';
+    sheet.frustumCulled = false;
+    sheet.position.set(
+      outsideFace.x,
+      outsideFace.y,
+      sheetBottom + sheetHeight * 0.5
+    );
+    sheet.rotation.set(-Math.PI / 2, 0, 0);
+    if (side === 'left') sheet.rotation.z = -Math.PI / 2;
+    if (side === 'right') sheet.rotation.z = Math.PI / 2;
+    if (side === 'front') sheet.rotation.z = 0;
+    if (side === 'back') sheet.rotation.z = Math.PI;
     sheet.userData.isInfinitySpillover = true;
+    if (sheet.material?.uniforms?.uTime) {
+      sheet.userData.animate = (_delta, clock) => {
+        sheet.material.uniforms.uTime.value = clock.getElapsedTime();
+      };
+    }
+    group.add(sheet);
   }
 
   _createWaterFeatureWall(group, length, width, blade = false) {
