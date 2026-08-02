@@ -10,6 +10,7 @@ import {
 } from "../scene.js";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
+import { createPoolWater } from "../pool/water.js";
 import { EditablePolygon } from "../pool/editing/polygon.js";
 
 import {
@@ -395,8 +396,7 @@ export class PoolApp {
       left: this._makeDimensionHandleMesh("left", "↔"),
       right: this._makeDimensionHandleMesh("right", "↔"),
       notchLength: this._makeDimensionHandleMesh("notchLength", "↔"),
-      notchWidth: this._makeDimensionHandleMesh("notchWidth", "↕"),
-      elevation: this._makeDimensionHandleMesh("poolElevation", "↕")
+      notchWidth: this._makeDimensionHandleMesh("notchWidth", "↕")
     };
 
     Object.values(meshes).forEach((mesh) => this.scene.add(mesh));
@@ -548,8 +548,7 @@ export class PoolApp {
       top: new THREE.Vector3(center.x, box.max.y + out, z),
       bottom: new THREE.Vector3(center.x, box.min.y - out, z),
       left: new THREE.Vector3(box.min.x - out, center.y, z),
-      right: new THREE.Vector3(box.max.x + out, center.y, z),
-      elevation: new THREE.Vector3(box.max.x + 0.28, box.min.y - 0.28, box.max.z + 0.18)
+      right: new THREE.Vector3(box.max.x + out, center.y, z)
     };
   }
 
@@ -577,13 +576,16 @@ export class PoolApp {
     const planeZ = 0;
     const point = this._screenToPlanePoint(event.clientX, event.clientY, planeZ) || handle.position.clone();
     const screenAxis = this._getHandleScreenAxisMetrics(handle, handle.position);
-    if (!screenAxis) return;
+    const verticalAxis = this._getHandleScreenAxisMetrics(
+      { userData: { handleAxisVector: new THREE.Vector3(0, 0, 1) } },
+      handle.position
+    );
+    if (!screenAxis || !verticalAxis) return;
 
     const affectsLength = key === "left" || key === "right";
     const affectsNotchLength = key === "notchLength";
     const affectsNotchWidth = key === "notchWidth";
-    const affectsElevation = key === "poolElevation";
-    const label = affectsLength ? "length" : affectsNotchLength ? "notch length" : affectsNotchWidth ? "notch width" : affectsElevation ? "pool height" : "width";
+    const label = affectsLength ? "length or height" : affectsNotchLength ? "notch length" : affectsNotchWidth ? "notch width" : "width or height";
     this.captureUndoState(`Drag ${label} handle`);
 
     if (!this._live.baseParams) {
@@ -599,6 +601,8 @@ export class PoolApp {
       startClientX: event.clientX,
       startClientY: event.clientY,
       screenAxis,
+      verticalAxis,
+      mode: (key === "notchLength" || key === "notchWidth") ? "resize" : null,
       startLength: Number(this.poolParams.length) || 0,
       startWidth: Number(this.poolParams.width) || 0,
       startNotchLengthX: Number(this.poolParams.notchLengthX) || 0,
@@ -617,9 +621,32 @@ export class PoolApp {
 
     const pointerDx = event.clientX - drag.startClientX;
     const pointerDy = event.clientY - drag.startClientY;
-    const projectedPixels = pointerDx * drag.screenAxis.x + pointerDy * drag.screenAxis.y;
-    const worldDelta = projectedPixels / drag.screenAxis.pixelsPerWorld;
+    const sizePixels = pointerDx * drag.screenAxis.x + pointerDy * drag.screenAxis.y;
+    const verticalPixels = pointerDx * drag.verticalAxis.x + pointerDy * drag.verticalAxis.y;
 
+    // Match the spa interaction: each existing length/width handle supports
+    // resize along its projected wall axis or pool elevation along projected Z.
+    // The first deliberate movement locks the gesture for that drag.
+    if (!drag.mode && Math.hypot(pointerDx, pointerDy) >= 6) {
+      drag.mode = Math.abs(verticalPixels) > Math.abs(sizePixels) * 1.15 ? "elevation" : "resize";
+    }
+    if (!drag.mode) return;
+
+    if (drag.mode === "elevation") {
+      const worldHeightDelta = verticalPixels / drag.verticalAxis.pixelsPerWorld;
+      const nextElevation = Math.round(THREE.MathUtils.clamp(drag.startElevation + worldHeightDelta, 0.1, 1.5) / 0.1) * 0.1;
+      if (Math.abs(nextElevation - this.getPoolElevation()) > 1e-4) {
+        this.poolParams.raised = true;
+        this.poolParams.poolElevation = nextElevation;
+        this.applyPoolElevation();
+        this.syncPoolRaisedControl();
+        this._notifyDesignerStateChanged?.();
+      }
+      this.syncSlidersFromParams();
+      return;
+    }
+
+    const worldDelta = sizePixels / drag.screenAxis.pixelsPerWorld;
     const minSize = 2.0;
     if (drag.key === "left" || drag.key === "right") {
       const signedDelta = drag.key === "right" ? worldDelta : -worldDelta;
@@ -650,15 +677,6 @@ export class PoolApp {
       if (Math.abs(nextFrac - this.poolParams.notchWidthY) > 1e-4) {
         this.poolParams.notchWidthY = nextFrac;
         this._markPoolParamDirty("notchWidthY");
-      }
-    } else if (drag.key === "poolElevation") {
-      const nextElevation = Math.round(THREE.MathUtils.clamp(drag.startElevation + worldDelta, 0.1, 1.5) / 0.1) * 0.1;
-      if (Math.abs(nextElevation - this.getPoolElevation()) > 1e-4) {
-        this.poolParams.raised = true;
-        this.poolParams.poolElevation = nextElevation;
-        this.applyPoolElevation();
-        this.syncPoolRaisedControl();
-        this._notifyDesignerStateChanged?.();
       }
     }
 
@@ -700,7 +718,7 @@ export class PoolApp {
     const isLShape = this.poolParams?.shape === "L";
     Object.entries(this.dimensionHandles.meshes).forEach(([key, mesh]) => {
       const point = targets[key];
-      if (!mesh || !point || ((key === "notchLength" || key === "notchWidth") && !isLShape) || (key === "elevation" && !this.poolParams?.raised)) {
+      if (!mesh || !point || ((key === "notchLength" || key === "notchWidth") && !isLShape)) {
         if (mesh) mesh.visible = false;
         return;
       }
@@ -7314,6 +7332,21 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     const existingWallThickness = 0.20;
 
+    // Tile the exposed top of the shortened original infinity wall. This is a
+    // thin finish cap only; it does not add another wall or knife-edge box.
+    const capCenter = frame.center.clone().addScaledVector(frame.inward, -existingWallThickness * 0.5);
+    const capGeometry = alongX
+      ? new THREE.BoxGeometry(span, existingWallThickness, 0.018)
+      : new THREE.BoxGeometry(existingWallThickness, span, 0.018);
+    this._addFeatureMesh(
+      group,
+      capGeometry,
+      tiled.clone(),
+      { x: capCenter.x, y: capCenter.y, z: poolTop - 0.10 + 0.009 },
+      null,
+      'infinity-wall-tile-cap'
+    );
+
     // Separate horizontal infinity-water surface, matching the spa-water model:
     // it bridges the pool water to the overflow edge without becoming part of
     // the structural wall mesh.
@@ -7337,9 +7370,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankWallThickness = 0.10;
     const tankTop = groundZ + 0.015;
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
+    // Move the tank 200 mm toward the pool so the open tank edge sits closer
+    // beneath the spill sheet. The wall nearest the pool is intentionally omitted.
     const tankCenter = frame.center.clone().addScaledVector(
       frame.inward,
-      -(existingWallThickness + tankOuterWidth * 0.5)
+      -(existingWallThickness + tankOuterWidth * 0.5 - 0.20)
     );
     const tankLength = span;
     const tankWidth = tankOuterWidth;
@@ -7375,19 +7410,56 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const halfTangent = tankLength * 0.5 - tankWallThickness * 0.5;
     const wallZ = tankTop - tankWallHeight * 0.5;
 
-    for (const [name, pos] of [
-      ['infinity-catch-wall-inner', tankCenter.clone().addScaledVector(normal, halfNormal)],
-      ['infinity-catch-wall-outer', tankCenter.clone().addScaledVector(normal, -halfNormal)]
-    ]) {
-      this._addFeatureMesh(group, longWallGeometry.clone(), tiled.clone(),
-        { x: pos.x, y: pos.y, z: wallZ }, null, name);
-    }
-    for (const [name, pos] of [
+    // Leave the pool-side of the catch tank open: only the outer and two end
+    // walls are built. This lets the spill sheet drop directly into the tank.
+    const outerWallPos = tankCenter.clone().addScaledVector(normal, -halfNormal);
+    this._addFeatureMesh(group, longWallGeometry.clone(), tiled.clone(),
+      { x: outerWallPos.x, y: outerWallPos.y, z: wallZ }, null, 'infinity-catch-wall-outer');
+
+    const endWallPositions = [
       ['infinity-catch-wall-end-a', tankCenter.clone().addScaledVector(tangent, halfTangent)],
       ['infinity-catch-wall-end-b', tankCenter.clone().addScaledVector(tangent, -halfTangent)]
-    ]) {
+    ];
+    for (const [name, pos] of endWallPositions) {
       this._addFeatureMesh(group, shortWallGeometry.clone(), tiled.clone(),
         { x: pos.x, y: pos.y, z: wallZ }, null, name);
+    }
+
+    // Cap the exposed tank walls with the active pool coping material. Fall back
+    // to the tile material only if the pool builder does not expose a coping mesh.
+    let copingMaterial = null;
+    const copingCandidates = [];
+    const copingSegments = this.poolGroup?.userData?.copingSegments;
+    if (Array.isArray(copingSegments)) copingCandidates.push(...copingSegments);
+    else if (copingSegments && typeof copingSegments === 'object') copingCandidates.push(...Object.values(copingSegments));
+    if (this.poolGroup?.userData?.copingMesh) copingCandidates.push(this.poolGroup.userData.copingMesh);
+    this.poolGroup?.traverse?.((obj) => {
+      if (obj?.isMesh && String(obj.name || '').toLowerCase().includes('coping')) copingCandidates.push(obj);
+    });
+    const copingSource = copingCandidates.find((obj) => obj?.material);
+    if (copingSource?.material) {
+      const sourceMaterial = Array.isArray(copingSource.material)
+        ? copingSource.material.find(Boolean)
+        : copingSource.material;
+      copingMaterial = sourceMaterial?.clone?.() || sourceMaterial;
+    }
+    if (!copingMaterial) copingMaterial = tiled.clone();
+
+    const copingThickness = 0.05;
+    const copingOverhang = 0.035;
+    const longCapGeometry = alongX
+      ? new THREE.BoxGeometry(tankLength + copingOverhang * 2, tankWallThickness + copingOverhang * 2, copingThickness)
+      : new THREE.BoxGeometry(tankWallThickness + copingOverhang * 2, tankLength + copingOverhang * 2, copingThickness);
+    const shortCapGeometry = alongX
+      ? new THREE.BoxGeometry(tankWallThickness + copingOverhang * 2, tankWidth + copingOverhang * 2, copingThickness)
+      : new THREE.BoxGeometry(tankWidth + copingOverhang * 2, tankWallThickness + copingOverhang * 2, copingThickness);
+    const copingZ = tankTop + copingThickness * 0.5;
+
+    this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
+      { x: outerWallPos.x, y: outerWallPos.y, z: copingZ }, null, 'infinity-catch-coping-outer');
+    for (const [name, pos] of endWallPositions) {
+      this._addFeatureMesh(group, shortCapGeometry.clone(), copingMaterial.clone?.() || copingMaterial,
+        { x: pos.x, y: pos.y, z: copingZ }, null, `${name}-coping`);
     }
 
     const catchWaterGeometry = alongX
@@ -7402,14 +7474,17 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
           0.025
         );
 
-    this._addFeatureMesh(
-      group,
-      catchWaterGeometry,
-      spillMaterial.clone(),
-      { x: tankCenter.x, y: tankCenter.y, z: tankTop - 0.025 },
-      null,
-      'infinity-catch-water'
-    );
+    const catchWater = createPoolWater(catchWaterGeometry);
+    catchWater.name = 'infinity-catch-water';
+    catchWater.position.set(tankCenter.x, tankCenter.y, tankTop - 0.025);
+    catchWater.userData.isInfinityWater = true;
+    catchWater.userData.isInfinityCatchWater = true;
+    catchWater.frustumCulled = false;
+    group.add(catchWater);
+    if (!Array.isArray(this.poolGroup?.userData?.animatables)) {
+      this.poolGroup.userData.animatables = [];
+    }
+    this.poolGroup.userData.animatables.push(catchWater);
 
     // Water sheet only: place it just outside the existing pool wall so it
     // reads as water spilling over the current edge without adding a second
