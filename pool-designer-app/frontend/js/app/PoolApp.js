@@ -7514,11 +7514,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const sheetBottom = tankTop - 0.01;
     const sheetTop = poolTop + 0.004;
     const halfSpan = span * 0.5;
-    const tangent = frame.tangent.clone().normalize();
-    const aTop = outsideFace.clone().addScaledVector(tangent, -halfSpan); aTop.z = sheetTop;
-    const bTop = outsideFace.clone().addScaledVector(tangent,  halfSpan); bTop.z = sheetTop;
-    const aBottom = outsideFace.clone().addScaledVector(tangent, -halfSpan); aBottom.z = sheetBottom;
-    const bBottom = outsideFace.clone().addScaledVector(tangent,  halfSpan); bBottom.z = sheetBottom;
+    const sheetTangent = frame.tangent.clone().normalize();
+    const aTop = outsideFace.clone().addScaledVector(sheetTangent, -halfSpan); aTop.z = sheetTop;
+    const bTop = outsideFace.clone().addScaledVector(sheetTangent,  halfSpan); bTop.z = sheetTop;
+    const aBottom = outsideFace.clone().addScaledVector(sheetTangent, -halfSpan); aBottom.z = sheetBottom;
+    const bBottom = outsideFace.clone().addScaledVector(sheetTangent,  halfSpan); bBottom.z = sheetBottom;
     const sheetGeometry = new THREE.BufferGeometry();
     sheetGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
       aTop.x, aTop.y, aTop.z,
