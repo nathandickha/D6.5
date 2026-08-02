@@ -23,7 +23,7 @@ function clickData(selector, value) {
 function snapshot() {
   const p = app?.poolParams?.snapshot?.() || app?.poolParams || {};
   const spa = app?.spa;
-  return { pool: { ...p, raised: !!p.raised, poolElevation: Number(p.poolElevation || 0) }, spa: { enabled:!!spa, shape:spa?.userData?.spaShape || null, width:spa?.userData?.spaWidth || null, length:spa?.userData?.spaLength || null, height:Number(document.getElementById('spaTopHeight')?.value || 0), x:spa?.position?.x || 0, y:spa?.position?.y || 0 }, camera: { section:!!app?.sectionViewEnabled } };
+  return { pool: { ...p, raised: !!p.raised, poolElevation: Number(p.poolElevation || 0) }, features: [...(app?.poolFeatures || [])], spa: { enabled:!!spa, shape:spa?.userData?.spaShape || null, width:spa?.userData?.spaWidth || null, length:spa?.userData?.spaLength || null, height:Number(document.getElementById('spaTopHeight')?.value || 0), x:spa?.position?.x || 0, y:spa?.position?.y || 0 }, camera: { section:!!app?.sectionViewEnabled } };
 }
 function changed() { const state=snapshot(); try{ localStorage.setItem('atelier3d:lastProject:v1', JSON.stringify({modifiedAt:new Date().toISOString(),state})); }catch(_){} post('DESIGN_STATE_CHANGED', state); }
 async function apply(type, payload={}) {
@@ -81,6 +81,9 @@ async function apply(type, payload={}) {
       if (payload.style) clickData('.step-toggle-btn', payload.style);
       break;
     case 'UPDATE_BENCH': if (payload.mode) clickData('.step-toggle-btn', payload.mode); break;
+    case 'SET_POOL_FEATURE':
+      app.setPoolFeature?.(String(payload.feature || ''), !!payload.enabled);
+      break;
     case 'SET_INTERIOR_TILE':
     case 'SET_WATERLINE_TILE': { const wanted = String(payload.value||'').toLowerCase(); const btn=[...document.querySelectorAll('#tile-grid button')].find(b => (b.textContent||'').toLowerCase().includes(wanted)); btn?.click(); break; }
     case 'SET_CAMERA_VIEW': if (payload.view === 'section') app.setSectionViewEnabled(true); else { if(app.sectionViewEnabled) app.setSectionViewEnabled(false); if(payload.view === 'top'){ app.camera.position.set(0,0,18); app.camera.lookAt(0,0,0); } else app.focusCameraOnPoolShape(); } break;
