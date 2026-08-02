@@ -1530,8 +1530,11 @@ function generateMeterUVsForCircularRingGeometry(geo, tileSize = 0.3) {
   return target;
 }
 
-function createSpaChannelMaterial(spaGroup) {
-  const source = spaGroup?.userData?.floor?.material || spaGroup?.userData?.walls?.front?.material || null;
+function createSpaChannelMaterial(spaGroup, poolGroup = null) {
+  // Prefer the live pool interior material so a rebuilt spa channel always
+  // matches the selected pool finish. Fall back to the spa material only when
+  // the pool floor is not available.
+  const source = poolGroup?.userData?.floorMesh?.material || spaGroup?.userData?.floor?.material || spaGroup?.userData?.walls?.front?.material || null;
   if (source?.clone) {
     const cloned = source.clone();
     cloned.transparent = false;
@@ -1683,7 +1686,15 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
   const copingDepth = Math.max(0.05, copingTopZ - copingUnderZ);
   const channelFloorTopZ = copingTopZ - 0.3;
   const channelFloorThickness = 0.02;
-  const wallHeight = Math.max(0.02, copingUnderZ - channelFloorTopZ);
+
+  // The visible channel walls are structural faces. They must continue from the
+  // coping underside all the way down to the unchanged ground plane rather than
+  // stopping at the shallow channel floor.
+  ground.updateWorldMatrix?.(true, false);
+  const groundBounds = new THREE.Box3().setFromObject(ground);
+  const groundTopZ = Number.isFinite(groundBounds.max.z) ? groundBounds.max.z : 0;
+  const wallBottomZ = Math.min(channelFloorTopZ, groundTopZ);
+  const wallHeight = Math.max(0.02, copingUnderZ - wallBottomZ);
   const wallThickness = 0.20;
   const copingRebuildWidth = 0.25;
   const tileSize = spaGroup?.userData?.tileSize || poolGroup?.userData?.tileSize || 0.3;
@@ -1694,10 +1705,19 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
   group.name = 'SpaChannelGroup';
   const waterGroup = new THREE.Group();
   waterGroup.name = 'SpaChannelWaterGroup';
-  const mat = createSpaChannelMaterial(spaGroup);
+
+  // Channel geometry is generated from current world-space pool/spa positions.
+  // Record the elevation already represented in those coordinates so the parent
+  // app does not apply the raised-pool offset a second time after a spa rebuild.
+  const representedElevation = Number(poolGroup?.userData?.poolElevationApplied) || 0;
+  group.userData.poolElevationApplied = representedElevation;
+  group.userData.poolElevationLastZ = group.position.z;
+  waterGroup.userData.poolElevationApplied = representedElevation;
+  waterGroup.userData.poolElevationLastZ = waterGroup.position.z;
+  const mat = createSpaChannelMaterial(spaGroup, poolGroup);
   const copingMat = createCopingRebuildMaterial(poolGroup);
   const floorZCenter = channelFloorTopZ - channelFloorThickness * 0.5;
-  const wallZCenter = channelFloorTopZ + wallHeight * 0.5;
+  const wallZCenter = wallBottomZ + wallHeight * 0.5;
   const copingZCenter = copingUnderZ + copingDepth * 0.5;
 
   if (spaGroup?.userData?.spaShape === 'circular') {
@@ -1731,7 +1751,7 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
           const wallBand = createCircularArcBandShape(wallInnerRadius, outerRadius, arcStart, arcEnd);
           const copingBand = createCircularArcBandShape(copingInnerRadius, outerRadius, arcStart, arcEnd);
           addCircularChannelExtrude(group, floorBand, channelFloorThickness, channelFloorTopZ - channelFloorThickness, center, quat, mat, tileSize, 'floor');
-          addCircularChannelExtrude(group, wallBand, wallHeight, channelFloorTopZ, center, quat, mat, tileSize, 'wall');
+          addCircularChannelExtrude(group, wallBand, wallHeight, wallBottomZ, center, quat, mat, tileSize, 'wall');
           addCircularChannelExtrude(group, copingBand, copingDepth, copingUnderZ, center, quat, copingMat, tileSize, 'coping');
           addCircularChannelWaterArc(waterGroup, radius, wallInnerRadius, arcStart, arcEnd, center, quat, waterLevelZ);
         }
@@ -2751,6 +2771,10 @@ function updatePoolPaving(ground, poolGroup, spaGroup = null) {
   paving.castShadow = false;
   paving.renderOrder = 2;
   paving.userData.isPoolPaving = true;
+  // If a spa edit rebuilds paving while the pool is already raised, keep the
+  // standard full perimeter hidden. The raised entry platform is managed by
+  // PoolApp and remains the only visible paving in this state.
+  paving.visible = !(Number(poolGroup?.userData?.poolElevationApplied) > 0.001);
   paving.userData.width = PAVING_WIDTH;
   paving.userData.topAlignedToCoping = true;
   scene.add(paving);

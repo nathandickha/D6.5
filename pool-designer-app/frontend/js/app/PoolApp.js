@@ -6814,6 +6814,16 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     const elevation = this.getPoolElevation();
     const isRaised = !!this.poolParams?.raised && elevation > 0.001;
+
+    // A spa edit can rebuild the standard paving mesh after the pool has already
+    // been raised. Hide every standard perimeter-paving mesh, not only the
+    // reference currently stored on the ground, so a newly rebuilt full paving
+    // ring can never reappear behind the raised entry platform.
+    this.scene.traverse?.((obj) => {
+      if (!obj?.isMesh || !obj.userData?.isPoolPaving) return;
+      if (obj.userData?.isRaisedEntryPaving) return;
+      obj.visible = !isRaised;
+    });
     standardPaving.visible = !isRaised;
     if (!isRaised) return;
 
