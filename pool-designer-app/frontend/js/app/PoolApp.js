@@ -7046,6 +7046,12 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
   // OPTIONAL POOL FEATURES
   // --------------------------------------------------------------
   _disposePoolFeatureGroup() {
+    const ground = this.ground || this.scene?.userData?.ground;
+    if (ground?.userData?.extraGroundVoids) {
+      ground.userData.extraGroundVoids = ground.userData.extraGroundVoids.filter(
+        (entry) => entry?.name !== 'infinity-catch-tank'
+      );
+    }
     const group = this.poolFeatureGroup;
     if (!group) return;
     group.parent?.remove(group);
@@ -7332,20 +7338,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     const existingWallThickness = 0.20;
 
-    // Tile the exposed top of the shortened original infinity wall. This is a
-    // thin finish cap only; it does not add another wall or knife-edge box.
-    const capCenter = frame.center.clone().addScaledVector(frame.inward, -existingWallThickness * 0.5);
-    const capGeometry = alongX
-      ? new THREE.BoxGeometry(span, existingWallThickness, 0.018)
-      : new THREE.BoxGeometry(existingWallThickness, span, 0.018);
-    this._addFeatureMesh(
-      group,
-      capGeometry,
-      tiled.clone(),
-      { x: capCenter.x, y: capCenter.y, z: poolTop - 0.10 + 0.009 },
-      null,
-      'infinity-wall-tile-cap'
-    );
+    // The shortened structural wall already uses the selected pool-tile material.
+    // Its existing box geometry therefore wraps the tile finish naturally up and
+    // over the exposed top face. Do not add a separate cap mesh here.
 
     // Separate horizontal infinity-water surface, matching the spa-water model:
     // it bridges the pool water to the overflow edge without becoming part of
@@ -7370,15 +7365,38 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankWallThickness = 0.10;
     const tankTop = groundZ + 0.015;
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
-    // Move the tank 200 mm toward the pool so the open tank edge sits closer
-    // beneath the spill sheet. The wall nearest the pool is intentionally omitted.
+    // Keep a 200 mm clear gap between the outside face of the infinity wall
+    // and the open inner edge of the catch tank.
     const tankCenter = frame.center.clone().addScaledVector(
       frame.inward,
-      -(existingWallThickness + tankOuterWidth * 0.5 - 0.20)
+      -(existingWallThickness + tankOuterWidth * 0.5 + 0.20)
     );
     const tankLength = span;
     const tankWidth = tankOuterWidth;
     const tankWallHeight = tankDepth;
+
+    // Cut a real opening in the ground plane beneath the entire catch tank.
+    // The hole follows the tank footprint and is rebuilt whenever the feature moves.
+    const ground = this.ground || this.scene?.userData?.ground;
+    if (ground) {
+      const tangent = frame.tangent.clone().normalize();
+      const normal = frame.inward.clone().normalize();
+      const halfT = tankLength * 0.5 + 0.03;
+      const halfN = tankWidth * 0.5 + 0.03;
+      const corners = [
+        tankCenter.clone().addScaledVector(tangent,  halfT).addScaledVector(normal,  halfN),
+        tankCenter.clone().addScaledVector(tangent, -halfT).addScaledVector(normal,  halfN),
+        tankCenter.clone().addScaledVector(tangent, -halfT).addScaledVector(normal, -halfN),
+        tankCenter.clone().addScaledVector(tangent,  halfT).addScaledVector(normal, -halfN)
+      ].map((point) => new THREE.Vector2(point.x, point.y));
+      const existing = Array.isArray(ground.userData.extraGroundVoids)
+        ? ground.userData.extraGroundVoids.filter((entry) => entry?.name !== 'infinity-catch-tank')
+        : [];
+      ground.userData.extraGroundVoids = [
+        ...existing,
+        { name: 'infinity-catch-tank', points: corners }
+      ];
+    }
 
     this._addFeatureMesh(
       group,
@@ -7486,31 +7504,38 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     }
     this.poolGroup.userData.animatables.push(catchWater);
 
-    // Water sheet only: place it just outside the existing pool wall so it
-    // reads as water spilling over the current edge without adding a second
-    // wall or knife-edge mesh.
+    // Build the spill sheet from explicit world-aligned corners so its top edge
+    // sits on the outside face of the infinity wall and its bottom edge reaches
+    // the catch-tank water. This avoids camera/side-dependent plane rotations.
     const outsideFace = frame.center.clone().addScaledVector(
       frame.inward,
       -(existingWallThickness + 0.006)
     );
-    const sheetBottom = tankTop;
-    const sheetHeight = Math.max(0.20, poolTop - sheetBottom);
-    const sheet = new THREE.Mesh(
-      new THREE.PlaneGeometry(span, sheetHeight, 1, 1),
-      spillMaterial
-    );
+    const sheetBottom = tankTop - 0.01;
+    const sheetTop = poolTop + 0.004;
+    const halfSpan = span * 0.5;
+    const tangent = frame.tangent.clone().normalize();
+    const aTop = outsideFace.clone().addScaledVector(tangent, -halfSpan); aTop.z = sheetTop;
+    const bTop = outsideFace.clone().addScaledVector(tangent,  halfSpan); bTop.z = sheetTop;
+    const aBottom = outsideFace.clone().addScaledVector(tangent, -halfSpan); aBottom.z = sheetBottom;
+    const bBottom = outsideFace.clone().addScaledVector(tangent,  halfSpan); bBottom.z = sheetBottom;
+    const sheetGeometry = new THREE.BufferGeometry();
+    sheetGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      aTop.x, aTop.y, aTop.z,
+      aBottom.x, aBottom.y, aBottom.z,
+      bTop.x, bTop.y, bTop.z,
+      bTop.x, bTop.y, bTop.z,
+      aBottom.x, aBottom.y, aBottom.z,
+      bBottom.x, bBottom.y, bBottom.z
+    ], 3));
+    sheetGeometry.setAttribute('uv', new THREE.Float32BufferAttribute([
+      0,1, 0,0, 1,1,
+      1,1, 0,0, 1,0
+    ], 2));
+    sheetGeometry.computeVertexNormals();
+    const sheet = new THREE.Mesh(sheetGeometry, spillMaterial);
     sheet.name = 'infinity-water-sheet';
     sheet.frustumCulled = false;
-    sheet.position.set(
-      outsideFace.x,
-      outsideFace.y,
-      sheetBottom + sheetHeight * 0.5
-    );
-    sheet.rotation.set(-Math.PI / 2, 0, 0);
-    if (side === 'left') sheet.rotation.z = -Math.PI / 2;
-    if (side === 'right') sheet.rotation.z = Math.PI / 2;
-    if (side === 'front') sheet.rotation.z = 0;
-    if (side === 'back') sheet.rotation.z = Math.PI;
     sheet.userData.isInfinitySpillover = true;
     if (sheet.material?.uniforms?.uTime) {
       sheet.userData.animate = (_delta, clock) => {
@@ -7571,6 +7596,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (this.poolFeatures.has('spout-water-features')) this._createWaterFeatureWall(group,length,width,false);
     if (this.poolFeatures.has('blade-water-features')) this._createWaterFeatureWall(group,length,width,true);
     this.poolGroup.add(group); this.poolFeatureGroup = group;
+    try {
+      updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
+      this.applyPoolElevation?.();
+    } catch (_) {}
   }
 
   setPoolFeature(feature, enabled) {
