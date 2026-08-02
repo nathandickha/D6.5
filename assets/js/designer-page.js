@@ -237,6 +237,15 @@
     }));
   });
 
+  document.querySelectorAll('[data-feature-option]').forEach(button => {
+    button.addEventListener('click', () => {
+      const selected = button.getAttribute('aria-pressed') !== 'true';
+      button.setAttribute('aria-pressed', String(selected));
+      button.classList.toggle('is-selected', selected);
+      status.textContent = selected ? `${button.textContent.trim()} selected` : `${button.textContent.trim()} removed`;
+    });
+  });
+
   setSpaControlsEnabled(false);
   activateControlTab('pool-spa');
 

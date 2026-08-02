@@ -383,3 +383,14 @@ body:not(.home-page){
   grid-template-columns:42px minmax(0,1fr);
   min-height:54px;
 }
+
+
+/* Pool & Spa — feature icon options */
+.pool-designer-page .feature-option-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pool-designer-page .feature-option{min-height:82px;border:1px solid #d5d3ce;background:rgba(255,255,255,.68);padding:11px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#282725;font:inherit;font-size:10px;line-height:1.25;text-align:center;cursor:pointer;transition:border-color 160ms ease,background-color 160ms ease,color 160ms ease}
+.pool-designer-page .feature-option svg{width:25px;height:25px;fill:none;stroke:#315f76;stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round;transition:transform 160ms ease}
+.pool-designer-page .feature-option:hover{border-color:#9eabb0;background:#f6f8f8}
+.pool-designer-page .feature-option:hover svg{transform:translateY(-1px)}
+.pool-designer-page .feature-option[aria-pressed="true"],.pool-designer-page .feature-option.is-selected{border-color:#315f76;background:#edf3f5;box-shadow:inset 0 0 0 1px #315f76}
+.pool-designer-page .feature-option:focus-visible{outline:2px solid #315f76;outline-offset:2px}
+@media(max-width:420px){.pool-designer-page .feature-option-grid{grid-template-columns:1fr 1fr}}
