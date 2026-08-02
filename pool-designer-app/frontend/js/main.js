@@ -208,7 +208,7 @@ let editorPreloadStarted = false;
 function preloadEditorModule() {
   if (editorModulePromise) return editorModulePromise;
   editorPreloadStarted = true;
-  editorModulePromise = import("./app/PoolApp.js?v=20260802-infinity-spa-wallbox").catch((err) => {
+  editorModulePromise = import("./app/PoolApp.js?v=20260802-infinity-water-tank-only").catch((err) => {
     console.warn("[PoolApp] Background editor preload failed; will retry on click.", err);
     editorModulePromise = null;
     editorPreloadStarted = false;

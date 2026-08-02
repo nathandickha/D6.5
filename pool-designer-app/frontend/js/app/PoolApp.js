@@ -7270,62 +7270,15 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const spillMaterial = this._getSpaStyleSpillMaterial();
     const alongX = Math.abs(frame.tangent.x) > 0.5;
 
-    // Match the spa infinity detail: remove conventional coping on the active
-    // edge and replace it with a thin tiled knife edge integrated into a solid
-    // overflow wall box.
-    this._hideInfinityEdgeCoping(side, frame, span);
+    // Keep the existing pool wall and coping untouched. The infinity feature
+    // now adds only the exterior water sheet and recessed catch tank, avoiding
+    // duplicate tiled wall/knife-edge geometry and the z-fighting it caused.
+    this._restoreInfinityEdgeCoping?.();
 
-    const overflowWallThickness = 0.20;
-    const overflowWallHeight = Math.max(0.20, poolTop - groundZ);
-    const overflowWallCenter = frame.center.clone().addScaledVector(
-      frame.inward,
-      -overflowWallThickness * 0.5
-    );
+    const existingWallThickness = 0.20;
 
-    const overflowWallGeometry = alongX
-      ? new THREE.BoxGeometry(span, overflowWallThickness, overflowWallHeight)
-      : new THREE.BoxGeometry(overflowWallThickness, span, overflowWallHeight);
-
-    this._addFeatureMesh(
-      group,
-      overflowWallGeometry,
-      tiled.clone(),
-      {
-        x: overflowWallCenter.x,
-        y: overflowWallCenter.y,
-        z: groundZ + overflowWallHeight * 0.5
-      },
-      null,
-      'infinity-overflow-wall-box'
-    );
-
-    // Thin knife edge directly on top of the overflow wall, matching the spa
-    // lip rather than appearing as a separate raised coping strip.
-    const knifeThickness = 0.045;
-    const knifeDepth = 0.055;
-    const knifeCenter = frame.center.clone().addScaledVector(
-      frame.inward,
-      -overflowWallThickness + knifeDepth * 0.5
-    );
-    const knifeGeometry = alongX
-      ? new THREE.BoxGeometry(span, knifeDepth, knifeThickness)
-      : new THREE.BoxGeometry(knifeDepth, span, knifeThickness);
-
-    this._addFeatureMesh(
-      group,
-      knifeGeometry,
-      tiled.clone(),
-      {
-        x: knifeCenter.x,
-        y: knifeCenter.y,
-        z: poolTop - knifeThickness * 0.5
-      },
-      null,
-      'infinity-knife-edge'
-    );
-
-    // Recessed catch tank, immediately outside the spill wall. Its opening is
-    // at the ground plane and the tiled tank body extends below ground.
+    // Recessed catch tank directly outside the existing pool wall. Its opening
+    // remains at ground level and its tiled body extends below the ground plane.
     const tankDepth = 0.55;
     const tankClearWidth = 0.72;
     const tankWallThickness = 0.10;
@@ -7333,7 +7286,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
     const tankCenter = frame.center.clone().addScaledVector(
       frame.inward,
-      -(overflowWallThickness + tankOuterWidth * 0.5)
+      -(existingWallThickness + tankOuterWidth * 0.5)
     );
     const tankLength = span;
     const tankWidth = tankOuterWidth;
@@ -7405,12 +7358,12 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       'infinity-catch-water'
     );
 
-    // Spa-style water sheet running down the outside face of the wall box.
-    // It is flush to the exterior face so the water visibly rolls over the
-    // knife edge and down the wall rather than floating in front of it.
+    // Water sheet only: place it just outside the existing pool wall so it
+    // reads as water spilling over the current edge without adding a second
+    // wall or knife-edge mesh.
     const outsideFace = frame.center.clone().addScaledVector(
       frame.inward,
-      -(overflowWallThickness + 0.006)
+      -(existingWallThickness + 0.006)
     );
     const sheetBottom = tankTop;
     const sheetHeight = Math.max(0.20, poolTop - sheetBottom);
