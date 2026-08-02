@@ -1687,14 +1687,15 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
   const channelFloorTopZ = copingTopZ - 0.3;
   const channelFloorThickness = 0.02;
 
-  // The visible channel walls are structural faces. They must continue from the
-  // coping underside all the way down to the unchanged ground plane rather than
-  // stopping at the shallow channel floor.
+  // Keep the original channel floor, water and upper wall geometry at their
+  // established elevations. Only add a separate lower wall extension from the
+  // channel-floor underside down to the unchanged ground plane.
+  const wallHeight = Math.max(0.02, copingUnderZ - channelFloorTopZ);
   ground.updateWorldMatrix?.(true, false);
   const groundBounds = new THREE.Box3().setFromObject(ground);
   const groundTopZ = Number.isFinite(groundBounds.max.z) ? groundBounds.max.z : 0;
-  const wallBottomZ = Math.min(channelFloorTopZ, groundTopZ);
-  const wallHeight = Math.max(0.02, copingUnderZ - wallBottomZ);
+  const lowerWallBottomZ = Math.min(channelFloorTopZ, groundTopZ);
+  const lowerWallHeight = Math.max(0, channelFloorTopZ - lowerWallBottomZ);
   const wallThickness = 0.20;
   const copingRebuildWidth = 0.25;
   const tileSize = spaGroup?.userData?.tileSize || poolGroup?.userData?.tileSize || 0.3;
@@ -1717,7 +1718,8 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
   const mat = createSpaChannelMaterial(spaGroup, poolGroup);
   const copingMat = createCopingRebuildMaterial(poolGroup);
   const floorZCenter = channelFloorTopZ - channelFloorThickness * 0.5;
-  const wallZCenter = wallBottomZ + wallHeight * 0.5;
+  const wallZCenter = channelFloorTopZ + wallHeight * 0.5;
+  const lowerWallZCenter = lowerWallBottomZ + lowerWallHeight * 0.5;
   const copingZCenter = copingUnderZ + copingDepth * 0.5;
 
   if (spaGroup?.userData?.spaShape === 'circular') {
@@ -1751,7 +1753,10 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
           const wallBand = createCircularArcBandShape(wallInnerRadius, outerRadius, arcStart, arcEnd);
           const copingBand = createCircularArcBandShape(copingInnerRadius, outerRadius, arcStart, arcEnd);
           addCircularChannelExtrude(group, floorBand, channelFloorThickness, channelFloorTopZ - channelFloorThickness, center, quat, mat, tileSize, 'floor');
-          addCircularChannelExtrude(group, wallBand, wallHeight, wallBottomZ, center, quat, mat, tileSize, 'wall');
+          addCircularChannelExtrude(group, wallBand, wallHeight, channelFloorTopZ, center, quat, mat, tileSize, 'wall');
+          if (lowerWallHeight > 0.001) {
+            addCircularChannelExtrude(group, wallBand, lowerWallHeight, lowerWallBottomZ, center, quat, mat, tileSize, 'wall-extension');
+          }
           addCircularChannelExtrude(group, copingBand, copingDepth, copingUnderZ, center, quat, copingMat, tileSize, 'coping');
           addCircularChannelWaterArc(waterGroup, radius, wallInnerRadius, arcStart, arcEnd, center, quat, waterLevelZ);
         }
@@ -1763,6 +1768,9 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
     const addBridge = (sx, sy, lx, ly) => {
       addChannelBox(group, sx, sy, channelFloorThickness, lx, ly, center, axisX, axisY, quat, mat, floorZCenter, tileSize, 'floor');
       addChannelBox(group, sx, sy, wallHeight, lx, ly, center, axisX, axisY, quat, mat, wallZCenter, tileSize, 'wall');
+      if (lowerWallHeight > 0.001) {
+        addChannelBox(group, sx, sy, lowerWallHeight, lx, ly, center, axisX, axisY, quat, mat, lowerWallZCenter, tileSize, 'wall-extension');
+      }
       addChannelBox(group, sx, sy, copingDepth, lx, ly, center, axisX, axisY, quat, copingMat, copingZCenter, tileSize, 'coping');
       addChannelWaterPlane(waterGroup, sx, sy, lx, ly, center, axisX, axisY, quat, waterLevelZ);
     };
@@ -1789,6 +1797,9 @@ function updateSpaChannelMeshes(ground, poolGroup, spaGroup) {
   };
   const addWallStrip = (sx, sy, lx, ly) => {
     addChannelBox(group, sx, sy, wallHeight, lx, ly, center, axisX, axisY, quat, mat, wallZCenter, tileSize, 'wall');
+    if (lowerWallHeight > 0.001) {
+      addChannelBox(group, sx, sy, lowerWallHeight, lx, ly, center, axisX, axisY, quat, mat, lowerWallZCenter, tileSize, 'wall-extension');
+    }
   };
   const addCopingStrip = (sx, sy, lx, ly) => {
     addChannelBox(group, sx, sy, copingDepth, lx, ly, center, axisX, axisY, quat, copingMat, copingZCenter, tileSize, 'coping');
