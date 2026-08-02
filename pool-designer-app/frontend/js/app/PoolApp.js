@@ -7210,6 +7210,53 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       { x:center.x, y:center.y, z:z+0.28 }, { x:Math.PI/2, y:0, z:0 }, 'bubbler-water-0');
   }
 
+  _restoreInfinityEdgeCoping() {
+    const hidden = this._infinityHiddenCoping || [];
+    hidden.forEach((mesh) => { if (mesh) mesh.visible = true; });
+    this._infinityHiddenCoping = [];
+  }
+
+  _hideInfinityEdgeCoping(side, frame, span) {
+    this._restoreInfinityEdgeCoping();
+    const segments = this.poolGroup?.userData?.copingSegments;
+    const candidates = Array.isArray(segments)
+      ? segments.filter(Boolean)
+      : (segments && typeof segments === 'object' ? Object.values(segments).filter(Boolean) : []);
+    const sideAliases = {
+      front: ['front', 'south'], back: ['back', 'north'],
+      left: ['left', 'west'], right: ['right', 'east']
+    }[side] || [side];
+
+    candidates.forEach((mesh) => {
+      const namedSide = String(mesh?.userData?.side || '').toLowerCase();
+      let matches = sideAliases.includes(namedSide);
+      if (!matches && mesh?.isObject3D) {
+        const center = new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3());
+        const local = this.poolGroup.worldToLocal(center.clone());
+        const normalDistance = Math.abs((local.x - frame.center.x) * frame.inward.x + (local.y - frame.center.y) * frame.inward.y);
+        const along = Math.abs((local.x - frame.center.x) * frame.tangent.x + (local.y - frame.center.y) * frame.tangent.y);
+        matches = normalDistance < 0.45 && along <= span * 0.58;
+      }
+      if (matches) {
+        mesh.visible = false;
+        this._infinityHiddenCoping.push(mesh);
+      }
+    });
+  }
+
+  _getSpaStyleSpillMaterial() {
+    let material = null;
+    this.scene?.traverse?.((obj) => {
+      if (!material && obj?.isMesh && obj.userData?.isSpaSpillover && obj.material) {
+        material = obj.material.clone();
+      }
+    });
+    return material || this._featureMaterial(0x287ca6, {
+      transparent:true, opacity:0.72, roughness:0.08,
+      depthWrite:false, side:THREE.DoubleSide
+    });
+  }
+
   _createInfinityEdge(group, length, width) {
     if (!this.poolParams?.raised) return;
     const entry = this._getEntryStepInfo(length, width);
@@ -7222,8 +7269,24 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankDepth = 0.5;
     const outsideCenter = frame.center.clone().addScaledVector(frame.inward, -0.48);
     const tiled = this._getPoolTileMaterial();
-    const water = this._featureMaterial(0x287ca6, { transparent:true, opacity:0.72, roughness:0.08, depthWrite:false, side:THREE.DoubleSide });
+    const water = this._getSpaStyleSpillMaterial();
     const alongX = Math.abs(frame.tangent.x) > 0.5;
+
+    // Remove coping only along the active overflow wall, matching the spa's
+    // knife-edge detail rather than leaving a conventional coping cap.
+    this._hideInfinityEdgeCoping(side, frame, span);
+
+    // Thin tiled knife edge located at the pool waterline. It is deliberately
+    // narrow so the water visually rolls over the outside face like the spa.
+    const knifeDepth = 0.045;
+    const knifeWidth = 0.055;
+    const knifeCenter = frame.center.clone().addScaledVector(frame.inward, -knifeWidth * 0.25);
+    const knifeGeometry = alongX
+      ? new THREE.BoxGeometry(span, knifeWidth, knifeDepth)
+      : new THREE.BoxGeometry(knifeWidth, span, knifeDepth);
+    this._addFeatureMesh(group, knifeGeometry, tiled.clone(),
+      { x:knifeCenter.x, y:knifeCenter.y, z:poolTop - knifeDepth / 2 }, null, 'infinity-knife-edge');
+
     const tankL = alongX ? span : 0.75;
     const tankW = alongX ? 0.75 : span;
     const wallT = 0.12;
@@ -7241,13 +7304,14 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this._addFeatureMesh(group, new THREE.BoxGeometry(Math.max(0.1,tankL-wallT*2), Math.max(0.1,tankW-wallT*2), 0.025), water.clone(),
       {x:outsideCenter.x,y:outsideCenter.y,z:tankTop-0.02}, null, 'infinity-catch-water');
 
-    const sheetCenter = frame.center.clone().addScaledVector(frame.inward, -0.04);
+    // Spa-style vertical spill sheet located immediately outside the knife edge.
+    const sheetCenter = frame.center.clone().addScaledVector(frame.inward, -0.055);
     const sheetHeight = Math.max(0.25, poolTop - tankTop);
-    const sheetGeometry = alongX ? new THREE.PlaneGeometry(span, sheetHeight) : new THREE.PlaneGeometry(span, sheetHeight);
-    const sheet = this._addFeatureMesh(group, sheetGeometry, water,
+    const sheet = this._addFeatureMesh(group, new THREE.PlaneGeometry(span, sheetHeight), water,
       {x:sheetCenter.x,y:sheetCenter.y,z:tankTop+sheetHeight/2}, null, 'infinity-water-sheet');
-    if (alongX) sheet.rotation.x = Math.PI/2;
-    else { sheet.rotation.x = Math.PI/2; sheet.rotation.z = Math.PI/2; }
+    sheet.rotation.x = Math.PI / 2;
+    if (!alongX) sheet.rotation.z = Math.PI / 2;
+    sheet.userData.isInfinitySpillover = true;
   }
 
   _createWaterFeatureWall(group, length, width, blade = false) {
@@ -7283,6 +7347,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
   }
 
   rebuildPoolFeatures() {
+    this._restoreInfinityEdgeCoping?.();
     this._disposePoolFeatureGroup();
     if (!this.poolGroup || !this.poolFeatures?.size) return;
     const availability = this.getPoolFeatureAvailability();
