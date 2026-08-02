@@ -7062,89 +7062,222 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     return mesh;
   }
 
+  _getGroundTopLocalZ() {
+    const ground = this.ground || this.scene?.userData?.ground;
+    if (!ground || !this.poolGroup) return -Math.max(Number(this.poolParams?.deep || 1.8), 1.8);
+    ground.updateWorldMatrix?.(true, false);
+    this.poolGroup.updateWorldMatrix?.(true, false);
+    const bounds = new THREE.Box3().setFromObject(ground);
+    const poolWorld = this.poolGroup.getWorldPosition(new THREE.Vector3());
+    return (Number.isFinite(bounds.max.z) ? bounds.max.z : 0) - poolWorld.z;
+  }
+
+  _getEntryStepInfo(length, width) {
+    const steps = [];
+    this.poolGroup?.traverse?.((obj) => {
+      if (obj?.isMesh && obj.userData?.isStep && !obj.userData?.isStepAddon) steps.push(obj);
+    });
+    if (!steps.length) return { side: 'front', center: new THREE.Vector3(0, -width / 2, 0), topZ: 0 };
+
+    const combined = new THREE.Box3();
+    steps.forEach(step => {
+      step.updateWorldMatrix?.(true, false);
+      combined.union(new THREE.Box3().setFromObject(step));
+    });
+    const worldCenter = combined.getCenter(new THREE.Vector3());
+    const localCenter = this.poolGroup.worldToLocal(worldCenter.clone());
+    const dxLeft = Math.abs(localCenter.x + length / 2);
+    const dxRight = Math.abs(length / 2 - localCenter.x);
+    const dyFront = Math.abs(localCenter.y + width / 2);
+    const dyBack = Math.abs(width / 2 - localCenter.y);
+    const min = Math.min(dxLeft, dxRight, dyFront, dyBack);
+    const side = min === dxLeft ? 'left' : min === dxRight ? 'right' : min === dyFront ? 'front' : 'back';
+
+    let topStep = null;
+    let topZ = -Infinity;
+    for (const step of steps) {
+      const box = new THREE.Box3().setFromObject(step);
+      if (box.max.z > topZ) { topZ = box.max.z; topStep = step; }
+    }
+    let topCenter = localCenter;
+    if (topStep) {
+      const box = new THREE.Box3().setFromObject(topStep);
+      topCenter = this.poolGroup.worldToLocal(box.getCenter(new THREE.Vector3()));
+      topZ = this.poolGroup.worldToLocal(new THREE.Vector3(box.getCenter(new THREE.Vector3()).x, box.getCenter(new THREE.Vector3()).y, box.max.z)).z;
+    }
+    return { side, center: localCenter, topStepCenter: topCenter, topZ };
+  }
+
+  _oppositeSide(side) {
+    return ({ front:'back', back:'front', left:'right', right:'left' })[side] || 'back';
+  }
+
+  _sideFrame(side, length, width, outside = 0) {
+    if (side === 'front') return { center:new THREE.Vector3(0, -width/2-outside, 0), tangent:new THREE.Vector3(1,0,0), inward:new THREE.Vector3(0,1,0), span:length };
+    if (side === 'back') return { center:new THREE.Vector3(0, width/2+outside, 0), tangent:new THREE.Vector3(1,0,0), inward:new THREE.Vector3(0,-1,0), span:length };
+    if (side === 'left') return { center:new THREE.Vector3(-length/2-outside, 0, 0), tangent:new THREE.Vector3(0,1,0), inward:new THREE.Vector3(1,0,0), span:width };
+    return { center:new THREE.Vector3(length/2+outside, 0, 0), tangent:new THREE.Vector3(0,1,0), inward:new THREE.Vector3(-1,0,0), span:width };
+  }
+
+  _hasVisiblePaving() {
+    if (this.poolParams?.raised) return !!(this.ground?.userData?.raisedEntryPavingGroup);
+    let found = false;
+    this.scene?.traverse?.(obj => {
+      if (obj?.isMesh && obj.userData?.isPoolPaving && obj.visible !== false) found = true;
+    });
+    return found;
+  }
+
+  _hasRaisedWall() {
+    if (this.poolParams?.raised && this.getPoolElevation() > 0.001) return true;
+    return Object.values(this.wallRaiseBySourceEdge || {}).some(v => Number(v) > 0.001);
+  }
+
+  getPoolFeatureAvailability() {
+    const hasPaving = this._hasVisiblePaving();
+    const hasRaisedWall = this._hasRaisedWall();
+    return {
+      'bar-stools': true,
+      'laminar-jets': hasPaving,
+      'bubblers': true,
+      'infinity-edge': !!this.poolParams?.raised && hasRaisedWall,
+      'spout-water-features': hasRaisedWall,
+      'blade-water-features': hasRaisedWall
+    };
+  }
+
+  _getPoolTileMaterial() {
+    let material = null;
+    this.poolGroup?.traverse?.(obj => {
+      if (material || !obj?.isMesh) return;
+      if (obj.userData?.isWall || obj.userData?.isPoolFloor) {
+        const candidate = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+        if (candidate) material = candidate.clone();
+      }
+    });
+    return material || this._featureMaterial(0x2d83b7, { roughness: 0.48 });
+  }
+
   _createBarStools(group, length, width) {
     const steel = this._featureMaterial(0x8e969b, { metalness: 0.68, roughness: 0.24 });
     const seat = this._featureMaterial(0xe9e7df, { roughness: 0.36 });
-    const y = -width * 0.24;
+    const entry = this._getEntryStepInfo(length, width);
+    const side = this._oppositeSide(entry.side);
+    const frame = this._sideFrame(side, length, width, -0.7);
+    const seatZ = -0.45;
+    const floorZ = -Math.max(Number(this.poolParams?.deep || 1.8), 0.6);
+    const legTop = seatZ - 0.055;
+    const legHeight = Math.max(0.12, legTop - floorZ);
     [-0.8, 0, 0.8].forEach((offset, index) => {
-      const x = Math.max(-length * 0.28, Math.min(length * 0.28, offset));
-      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.045, 0.055, 0.82, 18), steel,
-        { x, y, z: -0.48 }, { x: Math.PI / 2, y: 0, z: 0 }, `bar-stool-post-${index}`);
-      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.24, 0.24, 0.09, 28), seat,
-        { x, y, z: -0.05 }, { x: Math.PI / 2, y: 0, z: 0 }, `bar-stool-seat-${index}`);
+      const distance = THREE.MathUtils.clamp(offset, -frame.span * 0.28, frame.span * 0.28);
+      const x = frame.center.x + frame.tangent.x * distance + frame.inward.x * 0.55;
+      const y = frame.center.y + frame.tangent.y * distance + frame.inward.y * 0.55;
+      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.045, 0.055, legHeight, 18), steel.clone(),
+        { x, y, z: floorZ + legHeight / 2 }, { x: Math.PI / 2, y: 0, z: 0 }, `bar-stool-post-${index}`);
+      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.24, 0.24, 0.09, 28), seat.clone(),
+        { x, y, z: seatZ }, { x: Math.PI / 2, y: 0, z: 0 }, `bar-stool-seat-${index}`);
     });
   }
 
   _createLaminarJets(group, length, width) {
+    if (!this._hasVisiblePaving()) return;
     const metal = this._featureMaterial(0x737b80, { metalness: 0.72, roughness: 0.2 });
     const water = this._featureMaterial(0x7ed7f2, { transparent: true, opacity: 0.62, roughness: 0.08, metalness: 0, depthWrite: false });
-    const y = width / 2 + 0.36;
+    const entry = this._getEntryStepInfo(length, width);
+    const frame = this._sideFrame(entry.side, length, width, 0.45);
     [-0.28, 0, 0.28].forEach((ratio, index) => {
-      const x = length * ratio;
-      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.07, 0.08, 0.16, 18), metal,
-        { x, y, z: 0.08 }, { x: Math.PI / 2, y: 0, z: 0 }, `laminar-nozzle-${index}`);
-      const curve = new THREE.QuadraticBezierCurve3(
-        new THREE.Vector3(x, y - 0.02, 0.13),
-        new THREE.Vector3(x, width / 2 - 0.25, 0.72),
-        new THREE.Vector3(x, width / 2 - 0.72, -0.05)
-      );
+      const along = frame.span * ratio;
+      const start = frame.center.clone().addScaledVector(frame.tangent, along);
+      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.07, 0.08, 0.16, 18), metal.clone(),
+        { x:start.x, y:start.y, z:0.08 }, { x:Math.PI/2, y:0, z:0 }, `laminar-nozzle-${index}`);
+      const end = start.clone().addScaledVector(frame.inward, 1.1); end.z = -0.05;
+      const apex = start.clone().addScaledVector(frame.inward, 0.48); apex.z = 0.72;
+      const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(start.x,start.y,0.13), apex, end);
       const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.018, 8, false), water.clone());
-      tube.name = `laminar-water-${index}`;
-      group.add(tube);
+      tube.name = `laminar-water-${index}`; group.add(tube);
     });
   }
 
   _createBubblers(group, length, width) {
     const fitting = this._featureMaterial(0xc4c7c8, { metalness: 0.52, roughness: 0.28 });
     const water = this._featureMaterial(0x8bdcf2, { transparent: true, opacity: 0.46, roughness: 0.05, depthWrite: false });
-    [-0.65, 0.65].forEach((x, index) => {
-      const px = Math.max(-length * 0.25, Math.min(length * 0.25, x));
-      const py = -width * 0.30;
-      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.12, 0.12, 0.035, 24), fitting,
-        { x: px, y: py, z: -0.24 }, { x: Math.PI / 2, y: 0, z: 0 }, `bubbler-fitting-${index}`);
-      this._addFeatureMesh(group, new THREE.CylinderGeometry(0.025, 0.10, 0.52, 16, 1, true), water.clone(),
-        { x: px, y: py, z: 0.02 }, { x: Math.PI / 2, y: 0, z: 0 }, `bubbler-water-${index}`);
-    });
+    const entry = this._getEntryStepInfo(length, width);
+    const center = entry.topStepCenter || entry.center;
+    const z = Number.isFinite(entry.topZ) ? entry.topZ + 0.02 : -0.2;
+    this._addFeatureMesh(group, new THREE.CylinderGeometry(0.12, 0.12, 0.035, 24), fitting,
+      { x:center.x, y:center.y, z }, { x:Math.PI/2, y:0, z:0 }, 'bubbler-fitting-0');
+    this._addFeatureMesh(group, new THREE.CylinderGeometry(0.025, 0.10, 0.52, 16, 1, true), water,
+      { x:center.x, y:center.y, z:z+0.28 }, { x:Math.PI/2, y:0, z:0 }, 'bubbler-water-0');
   }
 
   _createInfinityEdge(group, length, width) {
-    const stone = this._featureMaterial(0xd8d5cc, { roughness: 0.62 });
-    const darkWater = this._featureMaterial(0x246f91, { transparent: true, opacity: 0.78, roughness: 0.1, depthWrite: false });
-    const y = width / 2 + 0.24;
-    this._addFeatureMesh(group, new THREE.BoxGeometry(length * 0.78, 0.42, 0.34), stone,
-      { x: 0, y, z: -0.18 }, null, 'infinity-overflow-trough');
-    this._addFeatureMesh(group, new THREE.BoxGeometry(length * 0.72, 0.30, 0.025), darkWater,
-      { x: 0, y: y - 0.02, z: 0.005 }, null, 'infinity-overflow-water');
-    this._addFeatureMesh(group, new THREE.BoxGeometry(length * 0.72, 0.025, 0.28), darkWater.clone(),
-      { x: 0, y: width / 2 + 0.01, z: -0.13 }, null, 'infinity-waterfall-sheet');
+    if (!this.poolParams?.raised) return;
+    const entry = this._getEntryStepInfo(length, width);
+    const side = this._oppositeSide(entry.side);
+    const frame = this._sideFrame(side, length, width, 0);
+    const span = Math.max(1.6, frame.span * 0.72);
+    const groundZ = this._getGroundTopLocalZ();
+    const poolTop = 0.02;
+    const tankTop = groundZ + 0.08;
+    const tankDepth = 0.5;
+    const outsideCenter = frame.center.clone().addScaledVector(frame.inward, -0.48);
+    const tiled = this._getPoolTileMaterial();
+    const water = this._featureMaterial(0x287ca6, { transparent:true, opacity:0.72, roughness:0.08, depthWrite:false, side:THREE.DoubleSide });
+    const alongX = Math.abs(frame.tangent.x) > 0.5;
+    const tankL = alongX ? span : 0.75;
+    const tankW = alongX ? 0.75 : span;
+    const wallT = 0.12;
+    const wallH = tankDepth;
+    this._addFeatureMesh(group, new THREE.BoxGeometry(tankL, tankW, 0.1), tiled.clone(),
+      {x:outsideCenter.x,y:outsideCenter.y,z:tankTop-tankDepth}, null, 'infinity-catch-floor');
+    this._addFeatureMesh(group, new THREE.BoxGeometry(tankL, wallT, wallH), tiled.clone(),
+      {x:outsideCenter.x,y:outsideCenter.y+(tankW/2-wallT/2),z:tankTop-wallH/2}, null, 'infinity-catch-wall-a');
+    this._addFeatureMesh(group, new THREE.BoxGeometry(tankL, wallT, wallH), tiled.clone(),
+      {x:outsideCenter.x,y:outsideCenter.y-(tankW/2-wallT/2),z:tankTop-wallH/2}, null, 'infinity-catch-wall-b');
+    this._addFeatureMesh(group, new THREE.BoxGeometry(wallT, tankW, wallH), tiled.clone(),
+      {x:outsideCenter.x+(tankL/2-wallT/2),y:outsideCenter.y,z:tankTop-wallH/2}, null, 'infinity-catch-wall-c');
+    this._addFeatureMesh(group, new THREE.BoxGeometry(wallT, tankW, wallH), tiled.clone(),
+      {x:outsideCenter.x-(tankL/2-wallT/2),y:outsideCenter.y,z:tankTop-wallH/2}, null, 'infinity-catch-wall-d');
+    this._addFeatureMesh(group, new THREE.BoxGeometry(Math.max(0.1,tankL-wallT*2), Math.max(0.1,tankW-wallT*2), 0.025), water.clone(),
+      {x:outsideCenter.x,y:outsideCenter.y,z:tankTop-0.02}, null, 'infinity-catch-water');
+
+    const sheetCenter = frame.center.clone().addScaledVector(frame.inward, -0.04);
+    const sheetHeight = Math.max(0.25, poolTop - tankTop);
+    const sheetGeometry = alongX ? new THREE.PlaneGeometry(span, sheetHeight) : new THREE.PlaneGeometry(span, sheetHeight);
+    const sheet = this._addFeatureMesh(group, sheetGeometry, water,
+      {x:sheetCenter.x,y:sheetCenter.y,z:tankTop+sheetHeight/2}, null, 'infinity-water-sheet');
+    if (alongX) sheet.rotation.x = Math.PI/2;
+    else { sheet.rotation.x = Math.PI/2; sheet.rotation.z = Math.PI/2; }
   }
 
   _createWaterFeatureWall(group, length, width, blade = false) {
-    const wall = this._featureMaterial(0xd9d7cf, { roughness: 0.72 });
-    const metal = this._featureMaterial(0x737b80, { metalness: 0.64, roughness: 0.22 });
-    const water = this._featureMaterial(0x78d3ee, { transparent: true, opacity: 0.52, roughness: 0.06, depthWrite: false, side: THREE.DoubleSide });
-    const wallLength = Math.min(length * 0.62, 4.8);
-    const y = width / 2 + 0.62;
-    this._addFeatureMesh(group, new THREE.BoxGeometry(wallLength, 0.22, 1.45), wall,
-      { x: 0, y, z: 0.72 }, null, blade ? 'blade-feature-wall' : 'spout-feature-wall');
+    if (!this._hasRaisedWall()) return;
+    const entry = this._getEntryStepInfo(length, width);
+    const side = this._oppositeSide(entry.side);
+    const frame = this._sideFrame(side, length, width, 0.01);
+    const metal = this._featureMaterial(0x737b80, { metalness:0.64, roughness:0.22 });
+    const water = this._featureMaterial(0x78d3ee, { transparent:true, opacity:0.52, roughness:0.06, depthWrite:false, side:THREE.DoubleSide });
+    const outletZ = Math.max(0.35, this.getPoolElevation() - 0.18);
+    const span = Math.min(frame.span * 0.62, 4.8);
+    const inwardOffset = 0.12;
     if (blade) {
-      this._addFeatureMesh(group, new THREE.BoxGeometry(wallLength * 0.72, 0.27, 0.09), metal,
-        { x: 0, y: y - 0.18, z: 1.14 }, null, 'blade-outlet');
-      this._addFeatureMesh(group, new THREE.PlaneGeometry(wallLength * 0.68, 1.15), water,
-        { x: 0, y: y - 0.34, z: 0.55 }, { x: Math.PI / 2, y: 0, z: 0 }, 'blade-water-sheet');
+      const pos = frame.center.clone().addScaledVector(frame.inward, inwardOffset);
+      const geometry = Math.abs(frame.tangent.x)>0.5 ? new THREE.BoxGeometry(span*0.72,0.16,0.09) : new THREE.BoxGeometry(0.16,span*0.72,0.09);
+      this._addFeatureMesh(group, geometry, metal, {x:pos.x,y:pos.y,z:outletZ}, null, 'blade-outlet');
+      const end = pos.clone().addScaledVector(frame.inward, 0.55);
+      const sheet = this._addFeatureMesh(group, new THREE.PlaneGeometry(span*0.68, Math.max(0.35,outletZ+0.05)), water,
+        {x:(pos.x+end.x)/2,y:(pos.y+end.y)/2,z:outletZ/2}, null, 'blade-water-sheet');
+      sheet.rotation.x = Math.PI/2;
+      if (Math.abs(frame.tangent.y)>0.5) sheet.rotation.z = Math.PI/2;
     } else {
-      [-0.25, 0, 0.25].forEach((ratio, index) => {
-        const x = wallLength * ratio;
-        this._addFeatureMesh(group, new THREE.BoxGeometry(0.38, 0.28, 0.12), metal.clone(),
-          { x, y: y - 0.18, z: 1.02 }, null, `spout-${index}`);
-        const curve = new THREE.QuadraticBezierCurve3(
-          new THREE.Vector3(x, y - 0.34, 1.0),
-          new THREE.Vector3(x, width / 2 + 0.05, 0.66),
-          new THREE.Vector3(x, width / 2 - 0.35, -0.04)
-        );
-        const stream = new THREE.Mesh(new THREE.TubeGeometry(curve, 18, 0.035, 8, false), water.clone());
-        stream.name = `spout-water-${index}`;
-        group.add(stream);
+      [-0.25,0,0.25].forEach((ratio,index)=>{
+        const pos = frame.center.clone().addScaledVector(frame.tangent, span*ratio).addScaledVector(frame.inward,inwardOffset);
+        this._addFeatureMesh(group,new THREE.BoxGeometry(0.32,0.18,0.12),metal.clone(),{x:pos.x,y:pos.y,z:outletZ},null,`spout-${index}`);
+        const end=pos.clone().addScaledVector(frame.inward,0.62); end.z=-0.04;
+        const apex=pos.clone().addScaledVector(frame.inward,0.28); apex.z=outletZ+0.12;
+        const curve=new THREE.QuadraticBezierCurve3(new THREE.Vector3(pos.x,pos.y,outletZ),apex,end);
+        const stream=new THREE.Mesh(new THREE.TubeGeometry(curve,18,0.035,8,false),water.clone());
+        stream.name=`spout-water-${index}`; group.add(stream);
       });
     }
   }
@@ -7152,28 +7285,29 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
   rebuildPoolFeatures() {
     this._disposePoolFeatureGroup();
     if (!this.poolGroup || !this.poolFeatures?.size) return;
+    const availability = this.getPoolFeatureAvailability();
+    [...this.poolFeatures].forEach(feature => { if (availability[feature] === false) this.poolFeatures.delete(feature); });
+    if (!this.poolFeatures.size) { this._notifyDesignerStateChanged?.(); return; }
     const group = new THREE.Group();
-    group.name = 'pool-features';
-    group.userData.isPoolFeatureGroup = true;
+    group.name = 'pool-features'; group.userData.isPoolFeatureGroup = true;
     const length = Number(this.poolParams.length || 8);
     const width = Number(this.poolParams.width || 4);
-    if (this.poolFeatures.has('bar-stools')) this._createBarStools(group, length, width);
-    if (this.poolFeatures.has('laminar-jets')) this._createLaminarJets(group, length, width);
-    if (this.poolFeatures.has('bubblers')) this._createBubblers(group, length, width);
-    if (this.poolFeatures.has('infinity-edge')) this._createInfinityEdge(group, length, width);
-    if (this.poolFeatures.has('spout-water-features')) this._createWaterFeatureWall(group, length, width, false);
-    if (this.poolFeatures.has('blade-water-features')) this._createWaterFeatureWall(group, length, width, true);
-    this.poolGroup.add(group);
-    this.poolFeatureGroup = group;
+    if (this.poolFeatures.has('bar-stools')) this._createBarStools(group,length,width);
+    if (this.poolFeatures.has('laminar-jets')) this._createLaminarJets(group,length,width);
+    if (this.poolFeatures.has('bubblers')) this._createBubblers(group,length,width);
+    if (this.poolFeatures.has('infinity-edge')) this._createInfinityEdge(group,length,width);
+    if (this.poolFeatures.has('spout-water-features')) this._createWaterFeatureWall(group,length,width,false);
+    if (this.poolFeatures.has('blade-water-features')) this._createWaterFeatureWall(group,length,width,true);
+    this.poolGroup.add(group); this.poolFeatureGroup = group;
   }
 
   setPoolFeature(feature, enabled) {
     const valid = new Set(['bar-stools','laminar-jets','bubblers','infinity-edge','spout-water-features','blade-water-features']);
     if (!valid.has(feature)) return false;
+    const availability = this.getPoolFeatureAvailability();
+    if (enabled && availability[feature] === false) return false;
     if (enabled) this.poolFeatures.add(feature); else this.poolFeatures.delete(feature);
-    this.rebuildPoolFeatures();
-    this._notifyDesignerStateChanged?.();
-    return true;
+    this.rebuildPoolFeatures(); this._notifyDesignerStateChanged?.(); return true;
   }
 
   // --------------------------------------------------------------
