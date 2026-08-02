@@ -239,6 +239,7 @@
 
   document.querySelectorAll('[data-feature-option]').forEach(button => {
     button.addEventListener('click', () => {
+      if (button.disabled || button.getAttribute('aria-disabled') === 'true') return;
       const selected = button.getAttribute('aria-pressed') !== 'true';
       sendDesignerCommand('SET_POOL_FEATURE', {
         feature: button.dataset.featureOption,
@@ -266,10 +267,26 @@
     const p = next.pool || next.poolParams || {};
     const s = next.spa || {};
     const selectedFeatures = new Set(Array.isArray(next.features) ? next.features : []);
+    const featureAvailability = next.featureAvailability || {};
     document.querySelectorAll('[data-feature-option]').forEach(button => {
-      const selected = selectedFeatures.has(button.dataset.featureOption);
+      const feature = button.dataset.featureOption;
+      const selected = selectedFeatures.has(feature);
+      const available = featureAvailability[feature] !== false;
       button.setAttribute('aria-pressed', String(selected));
       button.classList.toggle('is-selected', selected);
+      button.disabled = !available;
+      button.setAttribute('aria-disabled', String(!available));
+      if (!available) {
+        const reasons = {
+          'laminar-jets': 'Laminar jets require paving at the installation edge.',
+          'infinity-edge': 'Infinity edge requires an out-of-ground pool wall without paving.',
+          'spout-water-features': 'Spout water features require a raised pool wall.',
+          'blade-water-features': 'Blade water features require a raised pool wall.'
+        };
+        button.title = reasons[feature] || 'This feature is not available for the current pool configuration.';
+      } else {
+        button.removeAttribute('title');
+      }
     });
     document.querySelector('[data-summary="shape"]').textContent = p.shape || '—';
     document.querySelector('[data-summary="size"]').textContent = p.length && p.width ? `${Number(p.length).toFixed(1)} × ${Number(p.width).toFixed(1)} m` : '—';
