@@ -240,9 +240,11 @@
   document.querySelectorAll('[data-feature-option]').forEach(button => {
     button.addEventListener('click', () => {
       const selected = button.getAttribute('aria-pressed') !== 'true';
-      button.setAttribute('aria-pressed', String(selected));
-      button.classList.toggle('is-selected', selected);
-      status.textContent = selected ? `${button.textContent.trim()} selected` : `${button.textContent.trim()} removed`;
+      sendDesignerCommand('SET_POOL_FEATURE', {
+        feature: button.dataset.featureOption,
+        enabled: selected
+      });
+      status.textContent = selected ? `Adding ${button.textContent.trim()}…` : `Removing ${button.textContent.trim()}…`;
     });
   });
 
@@ -263,6 +265,12 @@
     state = next;
     const p = next.pool || next.poolParams || {};
     const s = next.spa || {};
+    const selectedFeatures = new Set(Array.isArray(next.features) ? next.features : []);
+    document.querySelectorAll('[data-feature-option]').forEach(button => {
+      const selected = selectedFeatures.has(button.dataset.featureOption);
+      button.setAttribute('aria-pressed', String(selected));
+      button.classList.toggle('is-selected', selected);
+    });
     document.querySelector('[data-summary="shape"]').textContent = p.shape || '—';
     document.querySelector('[data-summary="size"]').textContent = p.length && p.width ? `${Number(p.length).toFixed(1)} × ${Number(p.width).toFixed(1)} m` : '—';
     document.querySelector('[data-summary="depth"]').textContent = p.shallow != null && p.deep != null ? `${Number(p.shallow).toFixed(1)}–${Number(p.deep).toFixed(1)} m` : '—';
