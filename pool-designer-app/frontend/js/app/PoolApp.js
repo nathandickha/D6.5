@@ -7216,6 +7216,42 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this._infinityHiddenCoping = [];
   }
 
+  _restoreInfinityWallVoid() {
+    const entries = this._infinityWallVoidEntries || [];
+    entries.forEach(({ mesh, scaleZ, positionZ }) => {
+      if (!mesh) return;
+      mesh.scale.z = scaleZ;
+      mesh.position.z = positionZ;
+      mesh.updateMatrixWorld?.(true);
+    });
+    this._infinityWallVoidEntries = [];
+  }
+
+  _applyInfinityWallVoid(side) {
+    this._restoreInfinityWallVoid();
+    const aliases = {
+      front: ['front', 'south'], back: ['back', 'north'],
+      left: ['left', 'west'], right: ['right', 'east']
+    }[side] || [side];
+    const walls = Array.isArray(this.poolGroup?.userData?.wallMeshes)
+      ? this.poolGroup.userData.wallMeshes.filter(Boolean)
+      : [];
+    const matching = walls.filter((mesh) => aliases.includes(String(mesh?.userData?.side || '').toLowerCase()));
+    this._infinityWallVoidEntries = [];
+    matching.forEach((mesh) => {
+      mesh.geometry?.computeBoundingBox?.();
+      const box = mesh.geometry?.boundingBox;
+      if (!box) return;
+      const baseHeight = Math.abs((box.max.z - box.min.z) * mesh.scale.z);
+      if (!(baseHeight > 0.11)) return;
+      const cut = 0.10;
+      this._infinityWallVoidEntries.push({ mesh, scaleZ: mesh.scale.z, positionZ: mesh.position.z });
+      mesh.scale.z *= (baseHeight - cut) / baseHeight;
+      mesh.position.z -= cut * 0.5;
+      mesh.updateMatrixWorld?.(true);
+    });
+  }
+
   _hideInfinityEdgeCoping(side, frame, span) {
     this._restoreInfinityEdgeCoping();
     const segments = this.poolGroup?.userData?.copingSegments;
@@ -7270,12 +7306,29 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const spillMaterial = this._getSpaStyleSpillMaterial();
     const alongX = Math.abs(frame.tangent.x) > 0.5;
 
-    // Keep the existing pool wall and coping untouched. The infinity feature
-    // now adds only the exterior water sheet and recessed catch tank, avoiding
-    // duplicate tiled wall/knife-edge geometry and the z-fighting it caused.
-    this._restoreInfinityEdgeCoping?.();
+    // Remove coping from the active infinity side and create a 100 mm high
+    // invisible wall void by shortening only that structural wall from the top.
+    // The existing wall remains authoritative below the overflow notch.
+    this._hideInfinityEdgeCoping(side, frame, span);
+    this._applyInfinityWallVoid(side);
 
     const existingWallThickness = 0.20;
+
+    // Separate horizontal infinity-water surface, matching the spa-water model:
+    // it bridges the pool water to the overflow edge without becoming part of
+    // the structural wall mesh.
+    const overflowWidth = existingWallThickness + 0.18;
+    const overflowCenter = frame.center.clone().addScaledVector(frame.inward, -existingWallThickness * 0.15);
+    const overflowGeometry = alongX
+      ? new THREE.PlaneGeometry(span, overflowWidth, Math.max(12, Math.ceil(span * 18)), 8)
+      : new THREE.PlaneGeometry(overflowWidth, span, 8, Math.max(12, Math.ceil(span * 18)));
+    const overflowWater = new THREE.Mesh(overflowGeometry, spillMaterial.clone());
+    overflowWater.name = 'infinity-horizontal-water';
+    overflowWater.position.set(overflowCenter.x, overflowCenter.y, poolTop + 0.003);
+    overflowWater.userData.isInfinityWater = true;
+    overflowWater.userData.isInfinityHorizontalWater = true;
+    overflowWater.frustumCulled = false;
+    group.add(overflowWater);
 
     // Recessed catch tank directly outside the existing pool wall. Its opening
     // remains at ground level and its tiled body extends below the ground plane.
@@ -7426,6 +7479,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
   rebuildPoolFeatures() {
     this._restoreInfinityEdgeCoping?.();
+    this._restoreInfinityWallVoid?.();
     this._disposePoolFeatureGroup();
     if (!this.poolGroup || !this.poolFeatures?.size) return;
     const availability = this.getPoolFeatureAvailability();
