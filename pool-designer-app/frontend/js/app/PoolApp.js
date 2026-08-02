@@ -7046,12 +7046,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
   // OPTIONAL POOL FEATURES
   // --------------------------------------------------------------
   _disposePoolFeatureGroup() {
-    const ground = this.ground || this.scene?.userData?.ground;
-    if (ground?.userData?.extraGroundVoids) {
-      ground.userData.extraGroundVoids = ground.userData.extraGroundVoids.filter(
-        (entry) => entry?.name !== 'infinity-catch-tank'
-      );
-    }
     const group = this.poolFeatureGroup;
     if (!group) return;
     group.parent?.remove(group);
@@ -7375,28 +7369,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankWidth = tankOuterWidth;
     const tankWallHeight = tankDepth;
 
-    // Cut a real opening in the ground plane beneath the entire catch tank.
-    // The hole follows the tank footprint and is rebuilt whenever the feature moves.
-    const ground = this.ground || this.scene?.userData?.ground;
-    if (ground) {
-      const tangent = frame.tangent.clone().normalize();
-      const normal = frame.inward.clone().normalize();
-      const halfT = tankLength * 0.5 + 0.03;
-      const halfN = tankWidth * 0.5 + 0.03;
-      const corners = [
-        tankCenter.clone().addScaledVector(tangent,  halfT).addScaledVector(normal,  halfN),
-        tankCenter.clone().addScaledVector(tangent, -halfT).addScaledVector(normal,  halfN),
-        tankCenter.clone().addScaledVector(tangent, -halfT).addScaledVector(normal, -halfN),
-        tankCenter.clone().addScaledVector(tangent,  halfT).addScaledVector(normal, -halfN)
-      ].map((point) => new THREE.Vector2(point.x, point.y));
-      const existing = Array.isArray(ground.userData.extraGroundVoids)
-        ? ground.userData.extraGroundVoids.filter((entry) => entry?.name !== 'infinity-catch-tank')
-        : [];
-      ground.userData.extraGroundVoids = [
-        ...existing,
-        { name: 'infinity-catch-tank', points: corners }
-      ];
-    }
+    // Ground geometry is left unchanged here. A non-recursive ground-void
+    // implementation can be added separately without rebuilding the feature tree.
 
     this._addFeatureMesh(
       group,
@@ -7596,10 +7570,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (this.poolFeatures.has('spout-water-features')) this._createWaterFeatureWall(group,length,width,false);
     if (this.poolFeatures.has('blade-water-features')) this._createWaterFeatureWall(group,length,width,true);
     this.poolGroup.add(group); this.poolFeatureGroup = group;
-    try {
-      updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
-      this.applyPoolElevation?.();
-    } catch (_) {}
+    try { this.applyPoolElevation?.(); } catch (_) {}
   }
 
   setPoolFeature(feature, enabled) {

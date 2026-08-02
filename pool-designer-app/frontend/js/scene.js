@@ -2830,18 +2830,6 @@ export function updateGroundVoid(ground, poolGroup, spaGroup = null) {
   // spa placements do not create invalid ShapeGeometry holes across the pool.
   groundShape.holes = [new THREE.Path(holePts)];
 
-  // Optional feature-specific openings, such as the infinity catch tank.
-  // Points are supplied in the same world XY coordinate space as the pool hole.
-  const extraGroundVoids = Array.isArray(ground.userData?.extraGroundVoids)
-    ? ground.userData.extraGroundVoids
-    : [];
-  for (const entry of extraGroundVoids) {
-    const points = Array.isArray(entry?.points) ? entry.points : [];
-    if (points.length < 3) continue;
-    const pathPoints = points.map((point) => new THREE.Vector2(Number(point.x) || 0, Number(point.y) || 0));
-    groundShape.holes.push(new THREE.Path(pathPoints));
-  }
-
   const newGeo = new THREE.ShapeGeometry(groundShape);
   ground.geometry.dispose();
   ground.geometry = newGeo;
