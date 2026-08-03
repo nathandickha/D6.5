@@ -7323,7 +7323,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const entry = this._getEntryStepInfo(length, width);
     const side = this._oppositeSide(entry.side);
     const frame = this._sideFrame(side, length, width, 0);
-    const span = Math.max(1.6, frame.span * 0.72);
+    const wallSpan = Math.max(0.6, frame.span);
+    // Keep the visible infinity-water opening 200 mm in from both wall ends.
+    const span = Math.max(0.2, wallSpan - 0.40);
     const groundZ = this._getGroundTopLocalZ();
     // Match the infinity surface to the actual main-pool water elevation.
     // Pool water geometry may be offset within its mesh, so read the local
@@ -7342,8 +7344,20 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Remove coping from the active infinity side and create a 100 mm high
     // invisible wall void by shortening only that structural wall from the top.
     // The existing wall remains authoritative below the overflow notch.
-    this._hideInfinityEdgeCoping(side, frame, span);
+    // Remove coping across the complete infinity wall. The water opening itself
+    // remains inset 200 mm from each end.
+    this._hideInfinityEdgeCoping(side, frame, wallSpan);
     this._applyInfinityWallVoid(side);
+
+    // The shortened original wall remains the only structural geometry. Ensure
+    // its exposed top face and all wall faces use the active pool tile material.
+    for (const entry of (this._infinityWallVoidEntries || [])) {
+      const wallMesh = entry?.mesh;
+      if (!wallMesh?.isMesh) continue;
+      wallMesh.material = tiled.clone();
+      wallMesh.material.needsUpdate = true;
+      try { this.updateScaledBoxTilingUVs(wallMesh); } catch (_) {}
+    }
 
     const existingWallThickness = 0.20;
 
@@ -7380,7 +7394,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       frame.inward,
       -(existingWallThickness + tankOuterWidth * 0.5)
     );
-    const tankLength = span;
+    // The catchment tank spans the complete width of the infinity wall/pool.
+    const tankLength = wallSpan;
     const tankWidth = tankOuterWidth;
     const tankWallHeight = tankDepth;
 
