@@ -7500,8 +7500,29 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Extend each pool side wall exactly 300 mm beyond the pool toward the
     // catchment tank. The remaining catchment depth is completed by a separate
     // 200 mm tank-wall segment, so no wall projects beyond the outer tank wall.
-    const extensionHeight = tankWallHeight;
-    const extensionZ = tankTop - extensionHeight * 0.5;
+    // Match the 300 mm extensions to the actual adjacent pool walls, not the
+    // shallower catchment walls. This makes the original pool shell visibly
+    // continue beyond the pool body toward the tank.
+    const adjacentSides = (side === 'front' || side === 'back')
+      ? ['left', 'right', 'west', 'east']
+      : ['front', 'back', 'north', 'south'];
+    const wallMeshes = Array.isArray(this.poolGroup?.userData?.wallMeshes)
+      ? this.poolGroup.userData.wallMeshes.filter(Boolean)
+      : [];
+    const adjacentWall = wallMeshes.find((mesh) =>
+      adjacentSides.includes(String(mesh?.userData?.side || '').toLowerCase())
+    );
+    let extensionHeight = tankWallHeight;
+    let extensionZ = wallZ;
+    if (adjacentWall?.geometry) {
+      adjacentWall.geometry.computeBoundingBox?.();
+      const bounds = adjacentWall.geometry.boundingBox;
+      if (bounds) {
+        extensionHeight = Math.abs((bounds.max.z - bounds.min.z) * Number(adjacentWall.scale?.z || 1));
+        extensionZ = Number(adjacentWall.position?.z || 0)
+          + ((bounds.max.z + bounds.min.z) * 0.5 * Number(adjacentWall.scale?.z || 1));
+      }
+    }
     const poolWallRun = Math.min(sideWallForwardExtension, tankWidth);
     const tankWallRun = Math.max(0, tankWidth - poolWallRun);
     const sideWallOffset = wallSpan * 0.5 + existingWallThickness * 0.5;
