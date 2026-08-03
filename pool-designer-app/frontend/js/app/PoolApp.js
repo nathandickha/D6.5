@@ -7325,7 +7325,16 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const frame = this._sideFrame(side, length, width, 0);
     const span = Math.max(1.6, frame.span * 0.72);
     const groundZ = this._getGroundTopLocalZ();
-    const poolTop = 0.02;
+    // Match the infinity surface to the actual main-pool water elevation.
+    // Pool water geometry may be offset within its mesh, so read the local
+    // geometry bounds rather than relying on a hard-coded height.
+    const poolWaterMesh = this.poolGroup?.userData?.waterMesh || null;
+    let poolWaterZ = -0.1;
+    if (poolWaterMesh?.geometry) {
+      poolWaterMesh.geometry.computeBoundingBox?.();
+      const waterBounds = poolWaterMesh.geometry.boundingBox;
+      if (waterBounds) poolWaterZ = Number(poolWaterMesh.position?.z || 0) + Number(waterBounds.max?.z || 0);
+    }
     const tiled = this._getPoolTileMaterial();
     const spillMaterial = this._getSpaStyleSpillMaterial();
     const alongX = Math.abs(frame.tangent.x) > 0.5;
@@ -7350,9 +7359,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const overflowGeometry = alongX
       ? new THREE.PlaneGeometry(span, overflowWidth, Math.max(12, Math.ceil(span * 18)), 8)
       : new THREE.PlaneGeometry(overflowWidth, span, 8, Math.max(12, Math.ceil(span * 18)));
-    const overflowWater = new THREE.Mesh(overflowGeometry, spillMaterial.clone());
+    const overflowWater = createPoolWater(overflowGeometry);
     overflowWater.name = 'infinity-horizontal-water';
-    overflowWater.position.set(overflowCenter.x, overflowCenter.y, poolTop + 0.003);
+    overflowWater.position.set(overflowCenter.x, overflowCenter.y, poolWaterZ);
     overflowWater.userData.isInfinityWater = true;
     overflowWater.userData.isInfinityHorizontalWater = true;
     overflowWater.frustumCulled = false;
@@ -7369,7 +7378,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // and the open inner edge of the catch tank.
     const tankCenter = frame.center.clone().addScaledVector(
       frame.inward,
-      -(existingWallThickness + tankOuterWidth * 0.5 + 0.20)
+      -(existingWallThickness + tankOuterWidth * 0.5)
     );
     const tankLength = span;
     const tankWidth = tankOuterWidth;
@@ -7512,7 +7521,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       -(existingWallThickness + 0.006)
     );
     const sheetBottom = tankTop - 0.01;
-    const sheetTop = poolTop + 0.004;
+    const sheetTop = poolWaterZ;
     const halfSpan = span * 0.5;
     const sheetTangent = frame.tangent.clone().normalize();
     const aTop = outsideFace.clone().addScaledVector(sheetTangent, -halfSpan); aTop.z = sheetTop;
@@ -7533,16 +7542,22 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       1,1, 0,0, 1,0
     ], 2));
     sheetGeometry.computeVertexNormals();
-    const sheet = new THREE.Mesh(sheetGeometry, spillMaterial);
+    const sheet = createPoolWater(sheetGeometry);
     sheet.name = 'infinity-water-sheet';
     sheet.frustumCulled = false;
     sheet.userData.isInfinitySpillover = true;
-    if (sheet.material?.uniforms?.uTime) {
-      sheet.userData.animate = (_delta, clock) => {
-        sheet.material.uniforms.uTime.value = clock.getElapsedTime();
-      };
-    }
     group.add(sheet);
+
+    // Register all infinity water meshes with the same animation pipeline as
+    // the main pool water so their shader timing and visual response match.
+    if (!Array.isArray(this.poolGroup?.userData?.animatables)) {
+      this.poolGroup.userData.animatables = [];
+    }
+    for (const waterMesh of [overflowWater, sheet]) {
+      if (waterMesh?.userData && typeof waterMesh.userData.animate === 'function') {
+        this.poolGroup.userData.animatables.push(waterMesh);
+      }
+    }
   }
 
   _createWaterFeatureWall(group, length, width, blade = false) {
