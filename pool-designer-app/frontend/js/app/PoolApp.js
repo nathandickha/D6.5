@@ -7380,9 +7380,43 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     const existingWallThickness = 0.20;
 
-    // The shortened structural wall already uses the selected pool-tile material.
-    // Its existing box geometry therefore wraps the tile finish naturally up and
-    // over the exposed top face. Do not add a separate cap mesh here.
+    // Match the visible top of the spill-over wall to the tiled top surface that
+    // now appears on the catchment side-wall extensions. Add a very thin tile cap
+    // that sits flush on the shortened infinity wall so the top reads as tile
+    // rather than coping, while leaving the wall geometry and overflow behaviour
+    // unchanged.
+    for (const entry of (this._infinityWallVoidEntries || [])) {
+      const wallMesh = entry?.mesh;
+      if (!wallMesh?.isMesh || !wallMesh.geometry) continue;
+      wallMesh.geometry.computeBoundingBox?.();
+      const wallBounds = wallMesh.geometry.boundingBox;
+      if (!wallBounds) continue;
+      const sizeX = Math.abs((wallBounds.max.x - wallBounds.min.x) * wallMesh.scale.x);
+      const sizeY = Math.abs((wallBounds.max.y - wallBounds.min.y) * wallMesh.scale.y);
+      if (!(sizeX > 0.01) || !(sizeY > 0.01)) continue;
+      const capThickness = 0.012;
+      const wallTopZ = Number(wallMesh.position?.z || 0) + Number(wallBounds.max?.z || 0) * Number(wallMesh.scale?.z || 1);
+      const topCap = this._addFeatureMesh(
+        group,
+        new THREE.BoxGeometry(sizeX, sizeY, capThickness),
+        tiled.clone(),
+        {
+          x: Number(wallMesh.position?.x || 0),
+          y: Number(wallMesh.position?.y || 0),
+          z: wallTopZ - capThickness * 0.5 + 0.001
+        },
+        {
+          x: Number(wallMesh.rotation?.x || 0),
+          y: Number(wallMesh.rotation?.y || 0),
+          z: Number(wallMesh.rotation?.z || 0)
+        },
+        'infinity-edge-top-tile'
+      );
+      topCap.userData.isWall = true;
+      topCap.userData.isInfinityCatchSurface = true;
+      topCap.userData.isInfinityEdgeTopTile = true;
+      try { this.updateScaledBoxTilingUVs(topCap); } catch (_) {}
+    }
 
     // Separate horizontal infinity-water surface, matching the spa-water model:
     // it bridges the pool water to the overflow edge without becoming part of
@@ -7406,6 +7440,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankClearWidth = 0.72;
     const tankWallThickness = 0.20;
     const sideWallForwardExtension = 0.30;
+    const catchmentCopingWidth = 0.25;
     const tankTop = groundZ - 0.005;
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
     // Keep a 200 mm clear gap between the outside face of the infinity wall
@@ -7492,8 +7527,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // These extensions run from the pool exterior face to the outer catch wall.
     const extensionHeight = tankWallHeight;
     const extensionZ = tankTop - extensionHeight * 0.5;
-    // Continue each 200 mm pool side wall across the full catchment depth and
-    // a further 300 mm beyond the outside face of the long catchment wall.
     const extensionRun = tankWidth + sideWallForwardExtension;
     const extensionGeometry = alongX
       ? new THREE.BoxGeometry(existingWallThickness, extensionRun, extensionHeight)
@@ -7517,6 +7550,13 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       this.updateScaledBoxTilingUVs(extension);
     }
 
+    // Retain the existing end-cap positions for the coping strips so the coping
+    // sits on the newly extended pool walls rather than on independent tank walls.
+    const endWallPositions = [
+      ['infinity-catch-wall-end-a', extensionPositions[0][1].clone()],
+      ['infinity-catch-wall-end-b', extensionPositions[1][1].clone()]
+    ];
+
     // Cap the exposed tank walls with the active pool coping material. Fall back
     // to the tile material only if the pool builder does not expose a coping mesh.
     let copingMaterial = null;
@@ -7538,17 +7578,23 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (!copingMaterial) copingMaterial = tiled.clone();
 
     const copingThickness = 0.05;
-    // Keep coping only on the long outer catchment wall. The two side walls are
-    // direct continuations of the pool walls and must not receive separate cap meshes.
+    // Build the catchment coping explicitly to the requested 250 mm width.
     const longWallCopingLength = tankLength;
-    const longWallCopingWidth = 0.25;
     const longCapGeometry = alongX
-      ? new THREE.BoxGeometry(longWallCopingLength, longWallCopingWidth, copingThickness)
-      : new THREE.BoxGeometry(longWallCopingWidth, longWallCopingLength, copingThickness);
+      ? new THREE.BoxGeometry(longWallCopingLength, catchmentCopingWidth, copingThickness)
+      : new THREE.BoxGeometry(catchmentCopingWidth, longWallCopingLength, copingThickness);
+    const sideCapRun = extensionRun;
+    const shortCapGeometry = alongX
+      ? new THREE.BoxGeometry(catchmentCopingWidth, sideCapRun, copingThickness)
+      : new THREE.BoxGeometry(sideCapRun, catchmentCopingWidth, copingThickness);
     const copingZ = tankTop + copingThickness * 0.5;
 
     this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
       { x: outerWallPos.x, y: outerWallPos.y, z: copingZ }, null, 'infinity-catch-coping-outer');
+    endWallPositions.forEach(([name, pos]) => {
+      this._addFeatureMesh(group, shortCapGeometry.clone(), copingMaterial.clone?.() || copingMaterial,
+        { x: pos.x, y: pos.y, z: copingZ }, null, `${name}-coping`);
+    });
 
     // The pool-side edge of the tank is open, so the water must continue all
     // the way to the pool wall. Deduct only the outer wall thickness and shift
