@@ -7587,6 +7587,27 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (!copingMaterial) copingMaterial = tiled.clone();
 
     const copingThickness = 0.05;
+
+    // Continue the pool coping over the two new 300 mm full-height pool-wall
+    // extensions. These caps use the same 250 mm coping width and material as
+    // the existing pool coping, and sit at the actual top of the extended walls.
+    const extensionCopingWidth = 0.25;
+    const extensionCopingGeometry = alongX
+      ? new THREE.BoxGeometry(extensionCopingWidth, poolWallRun, copingThickness)
+      : new THREE.BoxGeometry(poolWallRun, extensionCopingWidth, copingThickness);
+    const extensionCopingZ = extensionZ + extensionHeight * 0.5 + copingThickness * 0.5;
+    sideSigns.forEach((sign, index) => {
+      const capPos = poolWallCenter.clone().addScaledVector(tangent, sign * sideWallOffset);
+      this._addFeatureMesh(
+        group,
+        extensionCopingGeometry.clone(),
+        copingMaterial.clone?.() || copingMaterial,
+        { x: capPos.x, y: capPos.y, z: extensionCopingZ },
+        null,
+        `infinity-pool-wall-extension-coping-${index ? 'b' : 'a'}`
+      );
+    });
+
     // Build the catchment coping explicitly to the requested 250 mm width.
     const longWallCopingLength = tankLength;
     const longCapGeometry = alongX
