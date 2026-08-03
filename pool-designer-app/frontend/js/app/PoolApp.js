@@ -7542,12 +7542,16 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     const copingThickness = 0.05;
     const copingOverhang = 0.035;
+    // The catchment side walls are continuations of the 200 mm pool walls, not
+    // the thinner 100 mm tank wall. Size their coping from the real wall width
+    // so the caps finish flush and do not look undersized.
+    const longWallCopingLength = tankLength + copingOverhang * 2;
     const longCapGeometry = alongX
-      ? new THREE.BoxGeometry(tankLength + copingOverhang * 2, tankWallThickness + copingOverhang * 2, copingThickness)
-      : new THREE.BoxGeometry(tankWallThickness + copingOverhang * 2, tankLength + copingOverhang * 2, copingThickness);
+      ? new THREE.BoxGeometry(longWallCopingLength, tankWallThickness + copingOverhang * 2, copingThickness)
+      : new THREE.BoxGeometry(tankWallThickness + copingOverhang * 2, longWallCopingLength, copingThickness);
     const shortCapGeometry = alongX
-      ? new THREE.BoxGeometry(tankWallThickness + copingOverhang * 2, tankWidth + copingOverhang * 2, copingThickness)
-      : new THREE.BoxGeometry(tankWidth + copingOverhang * 2, tankWallThickness + copingOverhang * 2, copingThickness);
+      ? new THREE.BoxGeometry(existingWallThickness + copingOverhang * 2, tankWidth + copingOverhang * 2, copingThickness)
+      : new THREE.BoxGeometry(tankWidth + copingOverhang * 2, existingWallThickness + copingOverhang * 2, copingThickness);
     const copingZ = tankTop + copingThickness * 0.5;
 
     this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
