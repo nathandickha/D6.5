@@ -208,7 +208,7 @@ let editorPreloadStarted = false;
 function preloadEditorModule() {
   if (editorModulePromise) return editorModulePromise;
   editorPreloadStarted = true;
-  editorModulePromise = import("./app/PoolApp.js?v=20260803-top-tile-infinity-coping-flush-v1").catch((err) => {
+  editorModulePromise = import("./app/PoolApp.js?v=20260803-infinity-tile-uv-no-side-coping-v1").catch((err) => {
     console.warn("[PoolApp] Background editor preload failed; will retry on click.", err);
     editorModulePromise = null;
     editorPreloadStarted = false;
