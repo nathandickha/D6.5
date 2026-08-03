@@ -7597,7 +7597,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       : new THREE.BoxGeometry(poolWallRun, extensionCopingWidth, copingThickness);
     const extensionCopingZ = extensionZ + extensionHeight * 0.5 + copingThickness * 0.5;
     sideSigns.forEach((sign, index) => {
-      const capPos = poolWallCenter.clone().addScaledVector(tangent, sign * sideWallOffset);
+      // Shift each extension coping 25 mm inward toward the pool centre.
+      const capPos = poolWallCenter.clone()
+        .addScaledVector(tangent, sign * sideWallOffset)
+        .addScaledVector(tangent, -sign * 0.025);
       this._addFeatureMesh(
         group,
         extensionCopingGeometry.clone(),
