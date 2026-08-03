@@ -7404,7 +7404,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // remains at ground level and its tiled body extends below the ground plane.
     const tankDepth = 0.55;
     const tankClearWidth = 0.72;
-    const tankWallThickness = 0.10;
+    const tankWallThickness = 0.20;
+    const sideWallForwardExtension = 0.30;
+    const catchmentCopingWidth = 0.25;
     const tankTop = groundZ - 0.005;
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
     // Keep a 200 mm clear gap between the outside face of the infinity wall
@@ -7491,12 +7493,13 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // These extensions run from the pool exterior face to the outer catch wall.
     const extensionHeight = tankWallHeight;
     const extensionZ = tankTop - extensionHeight * 0.5;
+    const extensionRun = tankWidth + sideWallForwardExtension;
     const extensionGeometry = alongX
-      ? new THREE.BoxGeometry(existingWallThickness, tankWidth, extensionHeight)
-      : new THREE.BoxGeometry(tankWidth, existingWallThickness, extensionHeight);
+      ? new THREE.BoxGeometry(existingWallThickness, extensionRun, extensionHeight)
+      : new THREE.BoxGeometry(extensionRun, existingWallThickness, extensionHeight);
     const extensionCenterNormal = frame.center.clone().addScaledVector(
       normal,
-      -(existingWallThickness + tankWidth * 0.5)
+      -(existingWallThickness + extensionRun * 0.5)
     );
     const sideWallOffset = wallSpan * 0.5 + existingWallThickness * 0.5;
     const extensionPositions = [
@@ -7541,34 +7544,22 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (!copingMaterial) copingMaterial = tiled.clone();
 
     const copingThickness = 0.05;
-    const copingOverhang = 0.035;
-    // The catchment side walls are continuations of the 200 mm pool walls, not
-    // the thinner 100 mm tank wall. Size their coping from the real wall width
-    // so the caps finish flush and do not look undersized.
-    const longWallCopingLength = tankLength + copingOverhang * 2;
+    // Build the catchment coping explicitly to the requested 250 mm width.
+    const longWallCopingLength = tankLength;
     const longCapGeometry = alongX
-      ? new THREE.BoxGeometry(longWallCopingLength, tankWallThickness + copingOverhang * 2, copingThickness)
-      : new THREE.BoxGeometry(tankWallThickness + copingOverhang * 2, longWallCopingLength, copingThickness);
-    // Make the side-wall coping match the pool coping size and run the full
-    // length from the pool wall out to the long outer catch wall.
-    // Side coping is asymmetric: keep the pool-side/back edge flush with the
-    // 200 mm wall and extend only the outer end past the long catch wall.
-    const sideCapRun = tankWidth + copingOverhang;
-    const sideCapWidth = existingWallThickness + copingOverhang;
+      ? new THREE.BoxGeometry(longWallCopingLength, catchmentCopingWidth, copingThickness)
+      : new THREE.BoxGeometry(catchmentCopingWidth, longWallCopingLength, copingThickness);
+    const sideCapRun = extensionRun;
     const shortCapGeometry = alongX
-      ? new THREE.BoxGeometry(sideCapWidth, sideCapRun, copingThickness)
-      : new THREE.BoxGeometry(sideCapRun, sideCapWidth, copingThickness);
+      ? new THREE.BoxGeometry(catchmentCopingWidth, sideCapRun, copingThickness)
+      : new THREE.BoxGeometry(sideCapRun, catchmentCopingWidth, copingThickness);
     const copingZ = tankTop + copingThickness * 0.5;
 
     this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
       { x: outerWallPos.x, y: outerWallPos.y, z: copingZ }, null, 'infinity-catch-coping-outer');
-    endWallPositions.forEach(([name, pos], index) => {
-      const tangentSign = index === 0 ? 1 : -1;
-      const capPos = pos.clone()
-        .addScaledVector(normal, -copingOverhang * 0.5)
-        .addScaledVector(tangent, tangentSign * copingOverhang * 0.5);
+    endWallPositions.forEach(([name, pos]) => {
       this._addFeatureMesh(group, shortCapGeometry.clone(), copingMaterial.clone?.() || copingMaterial,
-        { x: capPos.x, y: capPos.y, z: copingZ }, null, `${name}-coping`);
+        { x: pos.x, y: pos.y, z: copingZ }, null, `${name}-coping`);
     });
 
     // The pool-side edge of the tank is open, so the water must continue all
