@@ -7551,7 +7551,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       : new THREE.BoxGeometry(tankWallThickness + copingOverhang * 2, longWallCopingLength, copingThickness);
     // Make the side-wall coping match the pool coping size and run the full
     // length from the pool wall out to the long outer catch wall.
-    const sideCapRun = tankWidth + tankWallThickness + copingOverhang * 2;
+    const sideCapRun = tankWidth + copingOverhang;
     const shortCapGeometry = alongX
       ? new THREE.BoxGeometry(existingWallThickness + copingOverhang * 2, sideCapRun, copingThickness)
       : new THREE.BoxGeometry(sideCapRun, existingWallThickness + copingOverhang * 2, copingThickness);
@@ -7560,7 +7560,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
       { x: outerWallPos.x, y: outerWallPos.y, z: copingZ }, null, 'infinity-catch-coping-outer');
     for (const [name, pos] of endWallPositions) {
-      const capPos = pos.clone().addScaledVector(normal, -tankWallThickness * 0.5);
+      const capPos = pos.clone().addScaledVector(normal, -copingOverhang * 0.5);
       this._addFeatureMesh(group, shortCapGeometry.clone(), copingMaterial.clone?.() || copingMaterial,
         { x: capPos.x, y: capPos.y, z: copingZ }, null, `${name}-coping`);
     }
