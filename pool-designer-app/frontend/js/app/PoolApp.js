@@ -7428,7 +7428,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       ];
     }
 
-    this._addFeatureMesh(
+    const catchFloor = this._addFeatureMesh(
       group,
       new THREE.BoxGeometry(
         alongX ? tankLength : tankWidth,
@@ -7444,6 +7444,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       null,
       'infinity-catch-floor'
     );
+    // Use the same fixed-density UV projection as the main pool floor.
+    // BoxGeometry's default 0..1 UVs stretch one tile across the full tank.
+    catchFloor.userData.isFloor = true;
+    catchFloor.userData.isInfinityCatchSurface = true;
+    this.updateScaledBoxTilingUVs(catchFloor);
 
     const longWallGeometry = alongX
       ? new THREE.BoxGeometry(tankLength, tankWallThickness, tankWallHeight)
@@ -7461,16 +7466,24 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Leave the pool-side of the catch tank open: only the outer and two end
     // walls are built. This lets the spill sheet drop directly into the tank.
     const outerWallPos = tankCenter.clone().addScaledVector(normal, -halfNormal);
-    this._addFeatureMesh(group, longWallGeometry.clone(), tiled.clone(),
+    const outerTankWall = this._addFeatureMesh(group, longWallGeometry.clone(), tiled.clone(),
       { x: outerWallPos.x, y: outerWallPos.y, z: wallZ }, null, 'infinity-catch-wall-outer');
+    outerTankWall.userData.isWall = true;
+    outerTankWall.userData.forceVerticalUV = true;
+    outerTankWall.userData.isInfinityCatchSurface = true;
+    this.updateScaledBoxTilingUVs(outerTankWall);
 
     const endWallPositions = [
       ['infinity-catch-wall-end-a', tankCenter.clone().addScaledVector(tangent, halfTangent)],
       ['infinity-catch-wall-end-b', tankCenter.clone().addScaledVector(tangent, -halfTangent)]
     ];
     for (const [name, pos] of endWallPositions) {
-      this._addFeatureMesh(group, shortWallGeometry.clone(), tiled.clone(),
+      const endTankWall = this._addFeatureMesh(group, shortWallGeometry.clone(), tiled.clone(),
         { x: pos.x, y: pos.y, z: wallZ }, null, name);
+      endTankWall.userData.isWall = true;
+      endTankWall.userData.forceVerticalUV = true;
+      endTankWall.userData.isInfinityCatchSurface = true;
+      this.updateScaledBoxTilingUVs(endTankWall);
     }
 
     // Cap the exposed tank walls with the active pool coping material. Fall back
