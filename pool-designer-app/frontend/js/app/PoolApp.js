@@ -7293,6 +7293,19 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       left: ['left', 'west'], right: ['right', 'east']
     }[side] || [side];
 
+    // Explicitly hide any directly keyed coping segment first. Rectangle and
+    // L-shape builders expose named coping segments and should not rely on a
+    // spatial centre test, which can miss long segments at the overflow edge.
+    if (segments && typeof segments === 'object' && !Array.isArray(segments)) {
+      for (const alias of sideAliases) {
+        const direct = segments[alias];
+        if (direct && direct.visible !== false) {
+          direct.visible = false;
+          if (!this._infinityHiddenCoping.includes(direct)) this._infinityHiddenCoping.push(direct);
+        }
+      }
+    }
+
     candidates.forEach((mesh) => {
       const namedSide = String(mesh?.userData?.side || '').toLowerCase();
       let matches = sideAliases.includes(namedSide);
@@ -7473,18 +7486,38 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     outerTankWall.userData.isInfinityCatchSurface = true;
     this.updateScaledBoxTilingUVs(outerTankWall);
 
+    // Do not build separate catch-tank end walls. Continue the two pool side
+    // walls outward instead, so the catchment reads as part of the pool shell.
+    // These extensions run from the pool exterior face to the outer catch wall.
+    const extensionHeight = Math.max(0.10, -groundZ);
+    const extensionZ = groundZ + extensionHeight * 0.5;
+    const extensionGeometry = alongX
+      ? new THREE.BoxGeometry(existingWallThickness, tankWidth, extensionHeight)
+      : new THREE.BoxGeometry(tankWidth, existingWallThickness, extensionHeight);
+    const extensionCenterNormal = frame.center.clone().addScaledVector(
+      normal,
+      -(existingWallThickness + tankWidth * 0.5)
+    );
+    const extensionPositions = [
+      ['infinity-pool-wall-extension-a', extensionCenterNormal.clone().addScaledVector(tangent, wallSpan * 0.5)],
+      ['infinity-pool-wall-extension-b', extensionCenterNormal.clone().addScaledVector(tangent, -wallSpan * 0.5)]
+    ];
+    for (const [name, pos] of extensionPositions) {
+      const extension = this._addFeatureMesh(group, extensionGeometry.clone(), tiled.clone(),
+        { x: pos.x, y: pos.y, z: extensionZ }, null, name);
+      extension.userData.isWall = true;
+      extension.userData.forceVerticalUV = true;
+      extension.userData.isInfinityCatchSurface = true;
+      extension.userData.isInfinityPoolWallExtension = true;
+      this.updateScaledBoxTilingUVs(extension);
+    }
+
+    // Retain the existing end-cap positions for the coping strips so the coping
+    // sits on the newly extended pool walls rather than on independent tank walls.
     const endWallPositions = [
       ['infinity-catch-wall-end-a', tankCenter.clone().addScaledVector(tangent, halfTangent)],
       ['infinity-catch-wall-end-b', tankCenter.clone().addScaledVector(tangent, -halfTangent)]
     ];
-    for (const [name, pos] of endWallPositions) {
-      const endTankWall = this._addFeatureMesh(group, shortWallGeometry.clone(), tiled.clone(),
-        { x: pos.x, y: pos.y, z: wallZ }, null, name);
-      endTankWall.userData.isWall = true;
-      endTankWall.userData.forceVerticalUV = true;
-      endTankWall.userData.isInfinityCatchSurface = true;
-      this.updateScaledBoxTilingUVs(endTankWall);
-    }
 
     // Cap the exposed tank walls with the active pool coping material. Fall back
     // to the tile material only if the pool builder does not expose a coping mesh.
@@ -7523,21 +7556,19 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
         { x: pos.x, y: pos.y, z: copingZ }, null, `${name}-coping`);
     }
 
+    // The pool-side edge of the tank is open, so the water must continue all
+    // the way to the pool wall. Deduct only the outer wall thickness and shift
+    // the water centre toward the pool by half that thickness.
+    const catchWaterNormalSpan = Math.max(0.1, tankWidth - tankWallThickness);
+    const catchWaterTangentSpan = Math.max(0.1, tankLength - tankWallThickness * 2);
     const catchWaterGeometry = alongX
-      ? new THREE.BoxGeometry(
-          Math.max(0.1, tankLength - tankWallThickness * 2),
-          Math.max(0.1, tankWidth - tankWallThickness * 2),
-          0.025
-        )
-      : new THREE.BoxGeometry(
-          Math.max(0.1, tankWidth - tankWallThickness * 2),
-          Math.max(0.1, tankLength - tankWallThickness * 2),
-          0.025
-        );
+      ? new THREE.BoxGeometry(catchWaterTangentSpan, catchWaterNormalSpan, 0.025)
+      : new THREE.BoxGeometry(catchWaterNormalSpan, catchWaterTangentSpan, 0.025);
 
+    const catchWaterCenter = tankCenter.clone().addScaledVector(normal, tankWallThickness * 0.5);
     const catchWater = createPoolWater(catchWaterGeometry);
     catchWater.name = 'infinity-catch-water';
-    catchWater.position.set(tankCenter.x, tankCenter.y, tankTop - 0.105);
+    catchWater.position.set(catchWaterCenter.x, catchWaterCenter.y, tankTop - 0.105);
     catchWater.userData.isInfinityWater = true;
     catchWater.userData.isInfinityCatchWater = true;
     catchWater.frustumCulled = false;
