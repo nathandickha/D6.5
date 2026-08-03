@@ -6975,6 +6975,36 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // The pool group contains the shell, floor, water, coping, steps and benches.
     this._applyElevationDelta(this.poolGroup, elevation);
 
+    // The infinity catch tank is ground-fixed even though its feature group is
+    // parented to the raised pool. Counteract the pool elevation only for the
+    // tank floor, tank walls, tank coping and catch water. Pool-wall extensions
+    // remain attached to the raised pool as intended.
+    this.poolFeatureGroup?.traverse?.((object) => {
+      if (object?.userData?.isInfinityTankGroundFixed && object.position) {
+        if (!Number.isFinite(object.userData.infinityTankBaseZ)) {
+          object.userData.infinityTankBaseZ = object.position.z + elevation;
+        }
+        object.position.z = object.userData.infinityTankBaseZ - elevation;
+      }
+
+      // Keep only the bottom edge of the infinity sheet fixed to the catch-water
+      // surface. The top vertices stay local to the raised pool and therefore
+      // continue following the main pool water level.
+      if (object?.userData?.isInfinitySpillover && object.geometry?.attributes?.position) {
+        const fixedBottomZ = Number(object.userData.infinitySheetBottomFixedZ);
+        const bottomIndices = object.userData.infinitySheetBottomVertexIndices;
+        if (Number.isFinite(fixedBottomZ) && Array.isArray(bottomIndices)) {
+          const positions = object.geometry.attributes.position;
+          for (const vertexIndex of bottomIndices) {
+            positions.setZ(vertexIndex, fixedBottomZ - elevation);
+          }
+          positions.needsUpdate = true;
+          object.geometry.computeVertexNormals?.();
+          object.geometry.computeBoundingSphere?.();
+        }
+      }
+    });
+
     // The spa and channel are separate scene roots, so move them by the same delta.
     this._applyElevationDelta(this.spa, elevation);
     this._applyElevationDelta(this.ground?.userData?.spaChannelGroup, elevation);
@@ -7392,8 +7422,14 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Separate horizontal infinity-water surface, matching the spa-water model:
     // it bridges the pool water to the overflow edge without becoming part of
     // the structural wall mesh.
+    // Keep the horizontal infinity-water strip exactly over the 200 mm wall.
+    // Its inner and outer edges now align with the wall faces instead of
+    // extending into the pool or toward the catch tank.
     const overflowWidth = existingWallThickness;
-    const overflowCenter = frame.center.clone().addScaledVector(frame.inward, -existingWallThickness * 0.15);
+    const overflowCenter = frame.center.clone().addScaledVector(
+      frame.inward,
+      -existingWallThickness * 0.5
+    );
     const overflowGeometry = alongX
       ? new THREE.PlaneGeometry(span, overflowWidth, Math.max(12, Math.ceil(span * 18)), 8)
       : new THREE.PlaneGeometry(overflowWidth, span, 8, Math.max(12, Math.ceil(span * 18)));
@@ -7472,6 +7508,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // BoxGeometry's default 0..1 UVs stretch one tile across the full tank.
     catchFloor.userData.isFloor = true;
     catchFloor.userData.isInfinityCatchSurface = true;
+    catchFloor.userData.isInfinityTankGroundFixed = true;
+    catchFloor.userData.infinityTankBaseZ = catchFloor.position.z + this.getPoolElevation();
     this.updateScaledBoxTilingUVs(catchFloor);
 
     const longWallGeometry = alongX
@@ -7494,6 +7532,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       { x: outerWallPos.x, y: outerWallPos.y, z: wallZ }, null, 'infinity-catch-wall-outer');
     outerTankWall.userData.isWall = true;
     outerTankWall.userData.forceVerticalUV = true;
+    outerTankWall.userData.isInfinityTankGroundFixed = true;
+    outerTankWall.userData.infinityTankBaseZ = outerTankWall.position.z + this.getPoolElevation();
     outerTankWall.userData.isInfinityCatchSurface = true;
     this.updateScaledBoxTilingUVs(outerTankWall);
 
@@ -7547,6 +7587,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       this.updateScaledBoxTilingUVs(extension);
     });
 
+    const tankSideWalls = [];
     if (tankWallRun > 0.001) {
       const tankSideGeometry = alongX
         ? new THREE.BoxGeometry(tankWallThickness, tankWallRun, tankWallHeight)
@@ -7562,6 +7603,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
         tankSide.userData.isWall = true;
         tankSide.userData.forceVerticalUV = true;
         tankSide.userData.isInfinityCatchSurface = true;
+        tankSide.userData.isInfinityTankGroundFixed = true;
+        tankSide.userData.infinityTankBaseZ = tankSide.position.z + this.getPoolElevation();
+        tankSideWalls.push(tankSide);
         this.updateScaledBoxTilingUVs(tankSide);
       });
     }
@@ -7618,10 +7662,34 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       : new THREE.BoxGeometry(catchmentCopingWidth, longWallCopingLength, copingThickness);
     const copingZ = tankTop + copingThickness * 0.5;
 
-    // Coping is used only on the long outer catchment wall. The two side walls
-    // are tiled pool-wall extensions and have no separate coping geometry.
-    this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
+    const outerCoping = this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
       { x: outerWallPos.x, y: outerWallPos.y, z: copingZ }, null, 'infinity-catch-coping-outer');
+    outerCoping.userData.isInfinityTankGroundFixed = true;
+    outerCoping.userData.infinityTankBaseZ = outerCoping.position.z + this.getPoolElevation();
+
+    // Add 250 mm-wide coping to both exposed side tank-wall segments. These
+    // caps sit at the fixed tank-top level and do not follow raised-pool height.
+    if (tankSideWalls.length) {
+      const sideCapGeometry = alongX
+        ? new THREE.BoxGeometry(catchmentCopingWidth, tankWallRun, copingThickness)
+        : new THREE.BoxGeometry(tankWallRun, catchmentCopingWidth, copingThickness);
+      tankSideWalls.forEach((tankSide, index) => {
+        const sideCoping = this._addFeatureMesh(
+          group,
+          sideCapGeometry.clone(),
+          copingMaterial.clone?.() || copingMaterial,
+          {
+            x: tankSide.position.x - tangent.x * sideSigns[index] * 0.025,
+            y: tankSide.position.y - tangent.y * sideSigns[index] * 0.025,
+            z: copingZ
+          },
+          null,
+          `infinity-catch-side-coping-${index ? 'b' : 'a'}`
+        );
+        sideCoping.userData.isInfinityTankGroundFixed = true;
+        sideCoping.userData.infinityTankBaseZ = sideCoping.position.z + this.getPoolElevation();
+      });
+    }
 
     // The pool-side edge of the tank is open, so the water must continue all
     // the way to the pool wall. Deduct only the outer wall thickness and shift
@@ -7635,11 +7703,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const catchWaterCenter = tankCenter.clone().addScaledVector(normal, tankWallThickness * 0.5);
     const catchWater = createPoolWater(catchWaterGeometry);
     catchWater.name = 'infinity-catch-water';
-    const catchWaterCenterZ = tankTop - 0.105;
-    const catchWaterSurfaceZ = catchWaterCenterZ + 0.0125;
-    catchWater.position.set(catchWaterCenter.x, catchWaterCenter.y, catchWaterCenterZ);
+    catchWater.position.set(catchWaterCenter.x, catchWaterCenter.y, tankTop - 0.105);
     catchWater.userData.isInfinityWater = true;
     catchWater.userData.isInfinityCatchWater = true;
+    catchWater.userData.isInfinityTankGroundFixed = true;
+    catchWater.userData.infinityTankBaseZ = catchWater.position.z + this.getPoolElevation();
     catchWater.frustumCulled = false;
     group.add(catchWater);
     if (!Array.isArray(this.poolGroup?.userData?.animatables)) {
@@ -7654,7 +7722,14 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       frame.inward,
       -(existingWallThickness + 0.006)
     );
-    const sheetBottom = catchWaterSurfaceZ;
+    // Fix the lower edge to the visible top surface of the catch-tank water.
+    // Because the infinity feature is parented to the raised pool, subtract the
+    // current pool elevation here and update these lower vertices whenever the
+    // pool height changes. The upper edge remains attached to the pool water.
+    const catchWaterSurfaceZ = catchWater.position.z + 0.025 * 0.5;
+    const currentPoolElevation = this.getPoolElevation();
+    const sheetBottomFixedZ = catchWaterSurfaceZ + currentPoolElevation;
+    const sheetBottom = sheetBottomFixedZ - currentPoolElevation;
     const sheetTop = poolWaterZ;
     const halfSpan = span * 0.5;
     const sheetTangent = frame.tangent.clone().normalize();
@@ -7680,6 +7755,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     sheet.name = 'infinity-water-sheet';
     sheet.frustumCulled = false;
     sheet.userData.isInfinitySpillover = true;
+    sheet.userData.infinitySheetBottomFixedZ = sheetBottomFixedZ;
+    sheet.userData.infinitySheetBottomVertexIndices = [1, 4, 5];
     group.add(sheet);
 
     // Register all infinity water meshes with the same animation pipeline as
