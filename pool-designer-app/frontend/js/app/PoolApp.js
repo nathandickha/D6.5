@@ -7425,19 +7425,23 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankWidth = tankOuterWidth;
     const tankWallHeight = tankDepth;
 
-    // Cut a real opening in the ground plane beneath the entire catch tank.
-    // The hole follows the tank footprint and is rebuilt whenever the feature moves.
+    // Build the catchment ground void from the exact final exterior footprint,
+    // using the same direct-outline principle as the main pool void. The inner
+    // edge follows the outside face of the infinity wall, the side edges follow
+    // the outside faces of the 200 mm continued pool walls, and the outer edge
+    // follows the final 300 mm wall extension. No fixed clearance is added.
     const ground = this.ground || this.scene?.userData?.ground;
     if (ground) {
       const voidTangent = frame.tangent.clone().normalize();
       const voidNormal = frame.inward.clone().normalize();
-      const halfT = tankLength * 0.5 + 0.03;
-      const halfN = tankWidth * 0.5 + 0.03;
+      const tangentHalfExtent = wallSpan * 0.5 + existingWallThickness;
+      const innerNormalDistance = existingWallThickness;
+      const outerNormalDistance = existingWallThickness + tankWidth + sideWallForwardExtension;
       const corners = [
-        tankCenter.clone().addScaledVector(voidTangent,  halfT).addScaledVector(voidNormal,  halfN),
-        tankCenter.clone().addScaledVector(voidTangent, -halfT).addScaledVector(voidNormal,  halfN),
-        tankCenter.clone().addScaledVector(voidTangent, -halfT).addScaledVector(voidNormal, -halfN),
-        tankCenter.clone().addScaledVector(voidTangent,  halfT).addScaledVector(voidNormal, -halfN)
+        frame.center.clone().addScaledVector(voidTangent,  tangentHalfExtent).addScaledVector(voidNormal, -innerNormalDistance),
+        frame.center.clone().addScaledVector(voidTangent, -tangentHalfExtent).addScaledVector(voidNormal, -innerNormalDistance),
+        frame.center.clone().addScaledVector(voidTangent, -tangentHalfExtent).addScaledVector(voidNormal, -outerNormalDistance),
+        frame.center.clone().addScaledVector(voidTangent,  tangentHalfExtent).addScaledVector(voidNormal, -outerNormalDistance)
       ].map((point) => new THREE.Vector2(point.x, point.y));
       const existing = Array.isArray(ground.userData.extraGroundVoids)
         ? ground.userData.extraGroundVoids.filter((entry) => entry?.name !== 'infinity-catch-tank')
