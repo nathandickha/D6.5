@@ -7282,6 +7282,12 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const candidates = Array.isArray(segments)
       ? segments.filter(Boolean)
       : (segments && typeof segments === 'object' ? Object.values(segments).filter(Boolean) : []);
+    if (this.poolGroup?.userData?.copingMesh) candidates.push(this.poolGroup.userData.copingMesh);
+    this.poolGroup?.traverse?.((obj) => {
+      if (obj?.isMesh && String(obj.name || '').toLowerCase().includes('coping') && !candidates.includes(obj)) {
+        candidates.push(obj);
+      }
+    });
     const sideAliases = {
       front: ['front', 'south'], back: ['back', 'north'],
       left: ['left', 'west'], right: ['right', 'east']
@@ -7324,8 +7330,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const side = this._oppositeSide(entry.side);
     const frame = this._sideFrame(side, length, width, 0);
     const wallSpan = Math.max(0.6, frame.span);
-    // Keep the visible infinity-water opening 200 mm in from both wall ends.
-    const span = Math.max(0.2, wallSpan - 0.40);
+    // Match the infinity-water opening to the full active wall width.
+    const span = wallSpan;
     const groundZ = this._getGroundTopLocalZ();
     // Match the infinity surface to the actual main-pool water elevation.
     // Pool water geometry may be offset within its mesh, so read the local
@@ -7394,8 +7400,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       frame.inward,
       -(existingWallThickness + tankOuterWidth * 0.5)
     );
-    // The catchment tank spans the complete width of the infinity wall/pool.
-    const tankLength = wallSpan;
+    // Extend the catchment tank 200 mm beyond each end of the infinity wall.
+    const tankLength = wallSpan + 0.40;
     const tankWidth = tankOuterWidth;
     const tankWallHeight = tankDepth;
 
@@ -7518,7 +7524,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     const catchWater = createPoolWater(catchWaterGeometry);
     catchWater.name = 'infinity-catch-water';
-    catchWater.position.set(tankCenter.x, tankCenter.y, tankTop - 0.025);
+    catchWater.position.set(tankCenter.x, tankCenter.y, tankTop - 0.105);
     catchWater.userData.isInfinityWater = true;
     catchWater.userData.isInfinityCatchWater = true;
     catchWater.frustumCulled = false;
@@ -7535,7 +7541,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       frame.inward,
       -(existingWallThickness + 0.006)
     );
-    const sheetBottom = tankTop - 0.01;
+    const sheetBottom = tankTop - 0.16;
     const sheetTop = poolWaterZ;
     const halfSpan = span * 0.5;
     const sheetTangent = frame.tangent.clone().normalize();
