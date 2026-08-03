@@ -7436,7 +7436,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       const voidNormal = frame.inward.clone().normalize();
       const tangentHalfExtent = wallSpan * 0.5 + existingWallThickness;
       const innerNormalDistance = existingWallThickness;
-      const outerNormalDistance = existingWallThickness + tankWidth + sideWallForwardExtension;
+      const outerNormalDistance = existingWallThickness + tankWidth;
       const corners = [
         frame.center.clone().addScaledVector(voidTangent,  tangentHalfExtent).addScaledVector(voidNormal, -innerNormalDistance),
         frame.center.clone().addScaledVector(voidTangent, -tangentHalfExtent).addScaledVector(voidNormal, -innerNormalDistance),
@@ -7497,32 +7497,52 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     outerTankWall.userData.isInfinityCatchSurface = true;
     this.updateScaledBoxTilingUVs(outerTankWall);
 
-    // Do not build separate catch-tank end walls. Continue the two pool side
-    // walls outward instead, so the catchment reads as part of the pool shell.
-    // These extensions run from the pool exterior face to the outer catch wall.
+    // Extend each pool side wall exactly 300 mm beyond the pool toward the
+    // catchment tank. The remaining catchment depth is completed by a separate
+    // 200 mm tank-wall segment, so no wall projects beyond the outer tank wall.
     const extensionHeight = tankWallHeight;
     const extensionZ = tankTop - extensionHeight * 0.5;
-    const extensionRun = tankWidth + sideWallForwardExtension;
-    const extensionGeometry = alongX
-      ? new THREE.BoxGeometry(existingWallThickness, extensionRun, extensionHeight)
-      : new THREE.BoxGeometry(extensionRun, existingWallThickness, extensionHeight);
-    const extensionCenterNormal = frame.center.clone().addScaledVector(
-      normal,
-      -(existingWallThickness + extensionRun * 0.5)
-    );
+    const poolWallRun = Math.min(sideWallForwardExtension, tankWidth);
+    const tankWallRun = Math.max(0, tankWidth - poolWallRun);
     const sideWallOffset = wallSpan * 0.5 + existingWallThickness * 0.5;
-    const extensionPositions = [
-      ['infinity-pool-wall-extension-a', extensionCenterNormal.clone().addScaledVector(tangent, sideWallOffset)],
-      ['infinity-pool-wall-extension-b', extensionCenterNormal.clone().addScaledVector(tangent, -sideWallOffset)]
-    ];
-    for (const [name, pos] of extensionPositions) {
-      const extension = this._addFeatureMesh(group, extensionGeometry.clone(), tiled.clone(),
-        { x: pos.x, y: pos.y, z: extensionZ }, null, name);
+
+    const poolWallGeometry = alongX
+      ? new THREE.BoxGeometry(existingWallThickness, poolWallRun, extensionHeight)
+      : new THREE.BoxGeometry(poolWallRun, existingWallThickness, extensionHeight);
+    const poolWallCenter = frame.center.clone().addScaledVector(
+      normal,
+      -(existingWallThickness + poolWallRun * 0.5)
+    );
+
+    const sideSigns = [1, -1];
+    sideSigns.forEach((sign, index) => {
+      const pos = poolWallCenter.clone().addScaledVector(tangent, sign * sideWallOffset);
+      const extension = this._addFeatureMesh(group, poolWallGeometry.clone(), tiled.clone(),
+        { x: pos.x, y: pos.y, z: extensionZ }, null, `infinity-pool-wall-extension-${index ? 'b' : 'a'}`);
       extension.userData.isWall = true;
       extension.userData.forceVerticalUV = true;
       extension.userData.isInfinityCatchSurface = true;
       extension.userData.isInfinityPoolWallExtension = true;
       this.updateScaledBoxTilingUVs(extension);
+    });
+
+    if (tankWallRun > 0.001) {
+      const tankSideGeometry = alongX
+        ? new THREE.BoxGeometry(tankWallThickness, tankWallRun, tankWallHeight)
+        : new THREE.BoxGeometry(tankWallRun, tankWallThickness, tankWallHeight);
+      const tankSideCenter = frame.center.clone().addScaledVector(
+        normal,
+        -(existingWallThickness + poolWallRun + tankWallRun * 0.5)
+      );
+      sideSigns.forEach((sign, index) => {
+        const pos = tankSideCenter.clone().addScaledVector(tangent, sign * sideWallOffset);
+        const tankSide = this._addFeatureMesh(group, tankSideGeometry.clone(), tiled.clone(),
+          { x: pos.x, y: pos.y, z: wallZ }, null, `infinity-catch-side-wall-${index ? 'b' : 'a'}`);
+        tankSide.userData.isWall = true;
+        tankSide.userData.forceVerticalUV = true;
+        tankSide.userData.isInfinityCatchSurface = true;
+        this.updateScaledBoxTilingUVs(tankSide);
+      });
     }
 
     // Cap the exposed tank walls with the active pool coping material. Fall back
