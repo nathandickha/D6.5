@@ -7405,7 +7405,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankDepth = 0.55;
     const tankClearWidth = 0.72;
     const tankWallThickness = 0.10;
-    const tankTop = groundZ + 0.015;
+    const tankTop = groundZ - 0.005;
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
     // Keep a 200 mm clear gap between the outside face of the infinity wall
     // and the open inner edge of the catch tank.
@@ -7489,8 +7489,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Do not build separate catch-tank end walls. Continue the two pool side
     // walls outward instead, so the catchment reads as part of the pool shell.
     // These extensions run from the pool exterior face to the outer catch wall.
-    const extensionHeight = Math.max(0.10, -groundZ);
-    const extensionZ = groundZ + extensionHeight * 0.5;
+    const extensionHeight = tankWallHeight;
+    const extensionZ = tankTop - extensionHeight * 0.5;
     const extensionGeometry = alongX
       ? new THREE.BoxGeometry(existingWallThickness, tankWidth, extensionHeight)
       : new THREE.BoxGeometry(tankWidth, existingWallThickness, extensionHeight);
@@ -7498,9 +7498,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       normal,
       -(existingWallThickness + tankWidth * 0.5)
     );
+    const sideWallOffset = wallSpan * 0.5 + existingWallThickness * 0.5;
     const extensionPositions = [
-      ['infinity-pool-wall-extension-a', extensionCenterNormal.clone().addScaledVector(tangent, wallSpan * 0.5)],
-      ['infinity-pool-wall-extension-b', extensionCenterNormal.clone().addScaledVector(tangent, -wallSpan * 0.5)]
+      ['infinity-pool-wall-extension-a', extensionCenterNormal.clone().addScaledVector(tangent, sideWallOffset)],
+      ['infinity-pool-wall-extension-b', extensionCenterNormal.clone().addScaledVector(tangent, -sideWallOffset)]
     ];
     for (const [name, pos] of extensionPositions) {
       const extension = this._addFeatureMesh(group, extensionGeometry.clone(), tiled.clone(),
@@ -7515,8 +7516,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Retain the existing end-cap positions for the coping strips so the coping
     // sits on the newly extended pool walls rather than on independent tank walls.
     const endWallPositions = [
-      ['infinity-catch-wall-end-a', tankCenter.clone().addScaledVector(tangent, halfTangent)],
-      ['infinity-catch-wall-end-b', tankCenter.clone().addScaledVector(tangent, -halfTangent)]
+      ['infinity-catch-wall-end-a', extensionPositions[0][1].clone()],
+      ['infinity-catch-wall-end-b', extensionPositions[1][1].clone()]
     ];
 
     // Cap the exposed tank walls with the active pool coping material. Fall back
