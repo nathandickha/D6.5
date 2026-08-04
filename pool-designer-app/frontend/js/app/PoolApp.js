@@ -7501,6 +7501,100 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     return g;
   }
 
+
+  _createIndexedArcStripGeometry(innerPts, outerPts, z, thickness = 0) {
+    const n = Math.min(innerPts.length, outerPts.length);
+    if (n < 2) return new THREE.BufferGeometry();
+    const positions = [], uvs = [], indices = [];
+    // One shared vertex row per curved edge prevents visible seams between arc segments.
+    for (let i = 0; i < n; i += 1) {
+      const u = i / (n - 1);
+      positions.push(innerPts[i].x, innerPts[i].y, z, outerPts[i].x, outerPts[i].y, z);
+      uvs.push(u, 0, u, 1);
+    }
+    for (let i = 0; i < n - 1; i += 1) {
+      const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+      indices.push(a, b, c, c, b, d);
+    }
+    if (thickness > 0) {
+      const base = positions.length / 3;
+      for (let i = 0; i < n; i += 1) {
+        const u = i / (n - 1);
+        positions.push(innerPts[i].x, innerPts[i].y, z - thickness, outerPts[i].x, outerPts[i].y, z - thickness);
+        uvs.push(u, 0, u, 1);
+      }
+      for (let i = 0; i < n - 1; i += 1) {
+        const a = base + i * 2, b = a + 1, c = a + 2, d = a + 3;
+        indices.push(a, c, b, c, d, b);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    g.setIndex(indices);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  _createIndexedVerticalArcGeometry(points, bottomZ, topZ) {
+    const n = points.length;
+    if (n < 2) return new THREE.BufferGeometry();
+    const positions = [], uvs = [], indices = [];
+    for (let i = 0; i < n; i += 1) {
+      const u = i / (n - 1), p = points[i];
+      positions.push(p.x, p.y, topZ, p.x, p.y, bottomZ);
+      uvs.push(u, 1, u, 0);
+    }
+    for (let i = 0; i < n - 1; i += 1) {
+      const a=i*2,b=a+1,c=a+2,d=a+3;
+      indices.push(a,b,c,c,b,d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs,2));
+    g.setIndex(indices);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  _createIndexedOvalWallArcGeometry(innerPts, outerPts, bottomZ, topZ) {
+    const n = Math.min(innerPts.length, outerPts.length);
+    if (n < 2) return new THREE.BufferGeometry();
+    const positions = [], uvs = [], indices = [];
+    const addSurface = (rowA, rowB, reverse = false) => {
+      const base = positions.length / 3;
+      for (let i=0;i<n;i+=1) {
+        const u=i/(n-1), a=rowA(i), b=rowB(i);
+        positions.push(a.x,a.y,a.z,b.x,b.y,b.z); uvs.push(u,0,u,1);
+      }
+      for (let i=0;i<n-1;i+=1) {
+        const a=base+i*2,b=a+1,c=a+2,d=a+3;
+        if (reverse) indices.push(a,c,b,c,d,b); else indices.push(a,b,c,c,b,d);
+      }
+    };
+    addSurface(i=>new THREE.Vector3(innerPts[i].x,innerPts[i].y,bottomZ), i=>new THREE.Vector3(innerPts[i].x,innerPts[i].y,topZ), false);
+    addSurface(i=>new THREE.Vector3(outerPts[i].x,outerPts[i].y,bottomZ), i=>new THREE.Vector3(outerPts[i].x,outerPts[i].y,topZ), true);
+    addSurface(i=>new THREE.Vector3(innerPts[i].x,innerPts[i].y,topZ), i=>new THREE.Vector3(outerPts[i].x,outerPts[i].y,topZ), false);
+    const addCap=(i,reverse)=>{
+      const base=positions.length/3;
+      const pts=[
+        new THREE.Vector3(innerPts[i].x,innerPts[i].y,bottomZ),
+        new THREE.Vector3(outerPts[i].x,outerPts[i].y,bottomZ),
+        new THREE.Vector3(innerPts[i].x,innerPts[i].y,topZ),
+        new THREE.Vector3(outerPts[i].x,outerPts[i].y,topZ)
+      ];
+      for (const q of pts) positions.push(q.x,q.y,q.z);
+      uvs.push(0,0,1,0,0,1,1,1);
+      if(reverse) indices.push(base,base+2,base+1,base+2,base+3,base+1);
+      else indices.push(base,base+1,base+2,base+2,base+1,base+3);
+    };
+    addCap(0,true); addCap(n-1,false);
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+    g.setIndex(indices); g.computeVertexNormals(); return g;
+  }
+
   _applyOvalInfinityArcCut(side, length, width) {
     this._restoreInfinityEdgeCoping();
     this._restoreInfinityWallVoid();
@@ -7564,14 +7658,14 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     );
     const remainingWall = this._addFeatureMesh(
       group,
-      this._createOvalWallArcGeometry(remainingWallArc.inner, remainingWallArc.outer, -wallDepth, 0),
+      this._createIndexedOvalWallArcGeometry(remainingWallArc.inner, remainingWallArc.outer, -wallDepth, 0),
       ovalWallMaterial,
       { x:0, y:0, z:0 }, null, 'infinity-oval-remaining-wall'
     );
     remainingWall.userData.isWall = true;
     const loweredWall = this._addFeatureMesh(
       group,
-      this._createOvalWallArcGeometry(spillwayWallArc.inner, spillwayWallArc.outer, -wallDepth, -0.10),
+      this._createIndexedOvalWallArcGeometry(spillwayWallArc.inner, spillwayWallArc.outer, -wallDepth, -0.10),
       ovalWallMaterial.clone?.() || ovalWallMaterial,
       { x:0, y:0, z:0 }, null, 'infinity-oval-lowered-wall'
     );
@@ -7630,22 +7724,22 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       const n = new THREE.Vector2(Math.cos(t)/arc.a, Math.sin(t)/arc.b).normalize();
       innerWallPts.push(p.clone());
       outerWallPts.push(p.clone().addScaledVector(n, wallThickness));
-      tankInnerPts.push(p.clone().addScaledVector(n, wallThickness + 0.20));
-      tankOuterPts.push(p.clone().addScaledVector(n, wallThickness + 0.20 + tankClear + tankWall*2));
+      tankInnerPts.push(p.clone().addScaledVector(n, wallThickness + 0.015));
+      tankOuterPts.push(p.clone().addScaledVector(n, wallThickness + 0.015 + tankClear + tankWall*2));
     }
 
-    const overflow = createPoolWater(this._createStripGeometry(innerWallPts, outerWallPts, 0));
+    const overflow = createPoolWater(this._createIndexedArcStripGeometry(innerWallPts, outerWallPts, 0));
     overflow.name='infinity-horizontal-water'; overflow.position.z=poolWaterZ; overflow.userData.isInfinityWater=true; overflow.frustumCulled=false; group.add(overflow);
 
-    const floor = this._addFeatureMesh(group, this._createStripGeometry(tankInnerPts,tankOuterPts,tankFloorZ,0.10), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-floor');
+    const floor = this._addFeatureMesh(group, this._createIndexedArcStripGeometry(tankInnerPts,tankOuterPts,tankFloorZ,0.10), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-floor');
     floor.userData.isFloor=true; floor.userData.isInfinityTankGroundFixed=true; floor.userData.infinityTankBaseZ=elevation;
 
-    const outerWall = this._addFeatureMesh(group, this._createVerticalArcGeometry(tankOuterPts,tankFloorZ,tankTop), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-wall-outer');
+    const outerWall = this._addFeatureMesh(group, this._createIndexedVerticalArcGeometry(tankOuterPts,tankFloorZ,tankTop), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-wall-outer');
     outerWall.userData.isWall=true; outerWall.userData.isInfinityTankGroundFixed=true; outerWall.userData.infinityTankBaseZ=elevation;
 
     const waterInner = tankInnerPts.map((p,i)=>p.clone().lerp(tankOuterPts[i], tankWall/(tankClear+tankWall*2)));
     const waterOuter = tankOuterPts.map((p,i)=>p.clone().lerp(tankInnerPts[i], tankWall/(tankClear+tankWall*2)));
-    const catchWater = createPoolWater(this._createStripGeometry(waterInner,waterOuter,0));
+    const catchWater = createPoolWater(this._createIndexedArcStripGeometry(waterInner,waterOuter,0));
     catchWater.name='infinity-catch-water'; catchWater.position.z=tankTop-0.105; catchWater.userData.isInfinityWater=true; catchWater.userData.isInfinityTankGroundFixed=true; catchWater.userData.infinityTankBaseZ=catchWater.position.z+elevation; catchWater.frustumCulled=false; group.add(catchWater);
 
     let copingMaterial=tiled.clone();
@@ -7653,7 +7747,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (copingSource) copingMaterial=(Array.isArray(copingSource)?copingSource[0]:copingSource).clone?.() || (Array.isArray(copingSource)?copingSource[0]:copingSource);
     const capInner=tankOuterPts.map((p,i)=>{ const q=tankInnerPts[i]; const n=p.clone().sub(q).normalize(); return p.clone().addScaledVector(n,-copingWidth*0.5); });
     const capOuter=tankOuterPts.map((p,i)=>{ const q=tankInnerPts[i]; const n=p.clone().sub(q).normalize(); return p.clone().addScaledVector(n,copingWidth*0.5); });
-    const outerCoping=this._addFeatureMesh(group,this._createStripGeometry(capInner,capOuter,tankTop+0.025),copingMaterial,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
+    const outerCoping=this._addFeatureMesh(group,this._createIndexedArcStripGeometry(capInner,capOuter,tankTop+0.025),copingMaterial,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
     outerCoping.userData.isInfinityTankGroundFixed=true; outerCoping.userData.infinityTankBaseZ=elevation;
 
     const endPairs=[[tankInnerPts[0],tankOuterPts[0]],[tankInnerPts[segments],tankOuterPts[segments]]];
@@ -7665,17 +7759,13 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       sideCap.userData.isInfinityTankGroundFixed=true; sideCap.userData.infinityTankBaseZ=sideCap.position.z+elevation;
     });
 
+    // A single indexed vertical curtain shares vertices along the whole arc,
+    // eliminating the segmented panels and ensuring a true vertical drop.
     const sheetTopPts=outerWallPts.map(p=>p.clone());
-    const sheetPositions=[], sheetUvs=[];
     const bottomFixed=catchWater.position.z+0.0125+elevation, bottomLocal=bottomFixed-elevation;
-    for(let i=0;i<segments;i++){
-      const a=sheetTopPts[i],b=sheetTopPts[i+1],u0=i/segments,u1=(i+1)/segments;
-      sheetPositions.push(a.x,a.y,poolWaterZ,a.x,a.y,bottomLocal,b.x,b.y,poolWaterZ,b.x,b.y,poolWaterZ,a.x,a.y,bottomLocal,b.x,b.y,bottomLocal);
-      sheetUvs.push(u0,1,u0,0,u1,1,u1,1,u0,0,u1,0);
-    }
-    const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute(sheetPositions,3)); sg.setAttribute('uv',new THREE.Float32BufferAttribute(sheetUvs,2)); sg.computeVertexNormals();
+    const sg=this._createIndexedVerticalArcGeometry(sheetTopPts,bottomLocal,poolWaterZ);
     const sheet=createPoolWater(sg); sheet.name='infinity-water-sheet'; sheet.userData.isInfinitySpillover=true; sheet.userData.infinitySheetBottomFixedZ=bottomFixed;
-    sheet.userData.infinitySheetBottomVertexIndices=Array.from({length:segments},(_,i)=>[i*6+1,i*6+4,i*6+5]).flat(); sheet.frustumCulled=false; group.add(sheet);
+    sheet.userData.infinitySheetBottomVertexIndices=Array.from({length:sheetTopPts.length},(_,i)=>i*2+1); sheet.frustumCulled=false; group.add(sheet);
 
     const ground=this.ground||this.scene?.userData?.ground;
     if(ground){ const points=[...tankInnerPts,...tankOuterPts.slice().reverse()]; const existing=Array.isArray(ground.userData.extraGroundVoids)?ground.userData.extraGroundVoids.filter(e=>e?.name!=='infinity-catch-tank'):[]; ground.userData.extraGroundVoids=[...existing,{name:'infinity-catch-tank',points}]; }
