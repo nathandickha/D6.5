@@ -7819,13 +7819,97 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const outerCoping=this._addFeatureMesh(group,this._createIndexedArcStripGeometry(capInner,capOuter,tankTop+0.025),copingMaterial,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
     outerCoping.userData.isInfinityTankGroundFixed=true; outerCoping.userData.infinityTankBaseZ=elevation;
 
-    const endPairs=[[tankInnerPts[0],tankOuterPts[0]],[tankInnerPts[segments],tankOuterPts[segments]]];
-    endPairs.forEach((pair,index)=>{
-      const [a,b]=pair; const dir=b.clone().sub(a); const len=dir.length(); const mid=a.clone().add(b).multiplyScalar(.5); const ang=Math.atan2(dir.y,dir.x);
-      const sideWall=this._addFeatureMesh(group,this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(len,tankWall,tankDepth)),tiled.clone(),{x:mid.x,y:mid.y,z:(tankTop+tankFloorZ)/2},{x:0,y:0,z:ang},`infinity-catch-side-wall-${index?'b':'a'}`);
-      sideWall.userData.isInfinityTankGroundFixed=true; sideWall.userData.infinityTankBaseZ=sideWall.position.z+elevation;
-      const sideCap=this._addFeatureMesh(group,this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(len,copingWidth,0.05)),copingMaterial.clone?.()||copingMaterial,{x:mid.x,y:mid.y,z:tankTop+0.025},{x:0,y:0,z:ang},`infinity-catch-side-coping-${index?'b':'a'}`);
-      sideCap.userData.isInfinityTankGroundFixed=true; sideCap.userData.infinityTankBaseZ=sideCap.position.z+elevation;
+    // Match the rectangular infinity detail at both ends of the spillway:
+    // continue the pool shell outward by 300 mm over the tank, then complete
+    // the remaining radial run with the fixed-height tank side walls.
+    const poolWallRun = Math.min(0.30, tankClear + tankWall * 2);
+    const wallTopZ = sourceTopZ - copingThickness;
+    const extensionHeight = Math.max(0.10, wallTopZ - tankFloorZ);
+    const extensionCenterZ = tankFloorZ + extensionHeight * 0.5;
+    const tankSideWallCenterZ = tankTop - tankDepth * 0.5;
+    const spillwayEndPairs = [[outerWallPts[0], tankOuterPts[0]], [outerWallPts[segments], tankOuterPts[segments]]];
+    spillwayEndPairs.forEach((pair, index) => {
+      const [start, end] = pair;
+      const radial = end.clone().sub(start);
+      const totalRun = radial.length();
+      if (totalRun <= 1e-4) return;
+      const radialDir = radial.clone().normalize();
+      const angle = Math.atan2(radialDir.y, radialDir.x);
+      const extensionRun = Math.min(poolWallRun, totalRun);
+      const tankWallRun = Math.max(0, totalRun - extensionRun);
+
+      if (extensionRun > 1e-4) {
+        const extensionMid = start.clone().addScaledVector(radialDir, extensionRun * 0.5);
+        const extension = this._addFeatureMesh(
+          group,
+          this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(extensionRun, wallThickness, extensionHeight)),
+          tiled.clone(),
+          { x: extensionMid.x, y: extensionMid.y, z: extensionCenterZ },
+          { x: 0, y: 0, z: angle },
+          `infinity-pool-wall-extension-${index ? 'b' : 'a'}`
+        );
+        extension.userData.isWall = true;
+        extension.userData.forceVerticalUV = true;
+        extension.userData.isInfinityCatchSurface = true;
+        extension.userData.isInfinityPoolWallExtension = true;
+        const extensionPositions = extension.geometry?.attributes?.position;
+        if (extensionPositions) {
+          let minLocalZ = Infinity;
+          for (let i = 0; i < extensionPositions.count; i += 1) {
+            minLocalZ = Math.min(minLocalZ, extensionPositions.getZ(i));
+          }
+          const bottomIndices = [];
+          for (let i = 0; i < extensionPositions.count; i += 1) {
+            if (Math.abs(extensionPositions.getZ(i) - minLocalZ) < 1e-6) bottomIndices.push(i);
+          }
+          const fixedBottomZ = tankFloorZ;
+          extension.userData.infinityPoolWallBottomFixedZ = fixedBottomZ;
+          extension.userData.infinityPoolWallBottomVertexIndices = bottomIndices;
+          const localBottomZ = fixedBottomZ - this.getPoolElevation() - Number(extension.position?.z || 0);
+          bottomIndices.forEach((vertexIndex) => extensionPositions.setZ(vertexIndex, localBottomZ));
+          extensionPositions.needsUpdate = true;
+          extension.geometry.computeVertexNormals?.();
+          extension.geometry.computeBoundingBox?.();
+          extension.geometry.computeBoundingSphere?.();
+        }
+
+        this._addFeatureMesh(
+          group,
+          this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(extensionRun, copingWidth, copingThickness)),
+          copingMaterial.clone?.() || copingMaterial,
+          { x: extensionMid.x, y: extensionMid.y, z: sourceTopZ },
+          { x: 0, y: 0, z: angle },
+          `infinity-pool-wall-extension-coping-${index ? 'b' : 'a'}`
+        );
+      }
+
+      if (tankWallRun > 1e-4) {
+        const tankMid = start.clone().addScaledVector(radialDir, extensionRun + tankWallRun * 0.5);
+        const sideWall = this._addFeatureMesh(
+          group,
+          this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun, tankWall, tankDepth)),
+          tiled.clone(),
+          { x: tankMid.x, y: tankMid.y, z: tankSideWallCenterZ },
+          { x: 0, y: 0, z: angle },
+          `infinity-catch-side-wall-${index ? 'b' : 'a'}`
+        );
+        sideWall.userData.isWall = true;
+        sideWall.userData.forceVerticalUV = true;
+        sideWall.userData.isInfinityCatchSurface = true;
+        sideWall.userData.isInfinityTankGroundFixed = true;
+        sideWall.userData.infinityTankBaseZ = sideWall.position.z + elevation;
+
+        const sideCap = this._addFeatureMesh(
+          group,
+          this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun, copingWidth, copingThickness)),
+          copingMaterial.clone?.() || copingMaterial,
+          { x: tankMid.x, y: tankMid.y, z: tankTop + copingThickness * 0.5 },
+          { x: 0, y: 0, z: angle },
+          `infinity-catch-side-coping-${index ? 'b' : 'a'}`
+        );
+        sideCap.userData.isInfinityTankGroundFixed = true;
+        sideCap.userData.infinityTankBaseZ = sideCap.position.z + elevation;
+      }
     });
 
     // A single indexed vertical curtain shares vertices along the whole arc,
