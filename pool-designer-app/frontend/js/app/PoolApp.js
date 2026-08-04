@@ -7003,6 +7003,25 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
           object.geometry.computeBoundingSphere?.();
         }
       }
+
+      // The two pool-wall extensions beside the infinity sheet must reach the
+      // fixed catch-tank floor. Their top edges remain part of the raised pool,
+      // while only their lower vertices are counteracted as elevation changes.
+      if (object?.userData?.isInfinityPoolWallExtension && object.geometry?.attributes?.position) {
+        const fixedBottomZ = Number(object.userData.infinityPoolWallBottomFixedZ);
+        const bottomIndices = object.userData.infinityPoolWallBottomVertexIndices;
+        if (Number.isFinite(fixedBottomZ) && Array.isArray(bottomIndices)) {
+          const positions = object.geometry.attributes.position;
+          const localBottomZ = fixedBottomZ - elevation - Number(object.position?.z || 0);
+          for (const vertexIndex of bottomIndices) {
+            positions.setZ(vertexIndex, localBottomZ);
+          }
+          positions.needsUpdate = true;
+          object.geometry.computeVertexNormals?.();
+          object.geometry.computeBoundingBox?.();
+          object.geometry.computeBoundingSphere?.();
+        }
+      }
     });
 
     // The spa and channel are separate scene roots, so move them by the same delta.
@@ -7377,9 +7396,43 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     const entry = this._getEntryStepInfo(length, width);
     const side = this._oppositeSide(entry.side);
-    const frame = this._sideFrame(side, length, width, 0);
-    const wallSpan = Math.max(0.6, frame.span);
-    // Match the infinity-water opening to the full active wall width.
+    let frame = this._sideFrame(side, length, width, 0);
+    let wallSpan = Math.max(0.6, frame.span);
+
+    // Oval pools do not have a straight rectangular side. Build the infinity
+    // feature from a centred chord of the ellipse instead of from the outer
+    // bounding-box edge. This keeps the tank, side walls and water sheet
+    // attached to the curved shell rather than projecting from an imaginary
+    // full-width rectangular wall.
+    const isOvalInfinity = this.poolParams?.shape === 'oval';
+    if (isOvalInfinity) {
+      const alongRadius = (side === 'front' || side === 'back')
+        ? Math.max(0.3, length * 0.5)
+        : Math.max(0.3, width * 0.5);
+      const normalRadius = (side === 'front' || side === 'back')
+        ? Math.max(0.3, width * 0.5)
+        : Math.max(0.3, length * 0.5);
+
+      // Use a chord equal to 50% of the pool's transverse diameter. At this
+      // width the chord remains visibly integrated with the oval and leaves
+      // enough curved shell at both ends for clean side-wall connections.
+      const chordHalfSpan = Math.max(0.30, alongRadius * 0.50);
+      const ratio = Math.min(0.92, chordHalfSpan / alongRadius);
+      const chordNormal = normalRadius * Math.sqrt(Math.max(0, 1 - ratio * ratio));
+      const sign = (side === 'front' || side === 'left') ? -1 : 1;
+
+      frame = {
+        ...frame,
+        center: frame.center.clone(),
+        span: chordHalfSpan * 2
+      };
+      if (side === 'front' || side === 'back') frame.center.y = sign * chordNormal;
+      else frame.center.x = sign * chordNormal;
+      wallSpan = frame.span;
+    }
+
+    // Rectangular pools use the complete wall. Oval pools use the calculated
+    // chord opening above.
     const span = wallSpan;
     const groundZ = this._getGroundTopLocalZ();
     // Match the infinity surface to the actual main-pool water elevation.
@@ -7402,7 +7455,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Remove coping across the complete infinity wall. The water opening itself
     // remains inset 200 mm from each end.
     this._hideInfinityEdgeCoping(side, frame, wallSpan);
-    this._applyInfinityWallVoid(side);
+    if (!isOvalInfinity) this._applyInfinityWallVoid(side);
+    else this._restoreInfinityWallVoid();
 
     // The shortened original wall remains the only structural geometry. Ensure
     // its exposed top face and all wall faces use the active pool tile material.
@@ -7415,6 +7469,30 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     }
 
     const existingWallThickness = 0.20;
+
+    // The oval builder exposes one continuous curved wall mesh, so it cannot be
+    // shortened by a side tag like a rectangle. Add a dedicated straight chord
+    // wall beneath the overflow strip. It visually and structurally closes the
+    // chord opening while the original curved shell remains behind it.
+    if (isOvalInfinity) {
+      const ovalWallDepth = Math.max(0.6, Number(this.poolParams?.deep) || 1.8);
+      const chordWallGeometry = alongX
+        ? new THREE.BoxGeometry(span, existingWallThickness, ovalWallDepth)
+        : new THREE.BoxGeometry(existingWallThickness, span, ovalWallDepth);
+      const chordWallCenter = frame.center.clone().addScaledVector(frame.inward, -existingWallThickness * 0.5);
+      const chordWall = this._addFeatureMesh(
+        group,
+        chordWallGeometry,
+        tiled.clone(),
+        { x: chordWallCenter.x, y: chordWallCenter.y, z: -ovalWallDepth * 0.5 },
+        null,
+        'infinity-oval-chord-wall'
+      );
+      chordWall.userData.isWall = true;
+      chordWall.userData.forceVerticalUV = true;
+      chordWall.userData.isInfinityCatchSurface = true;
+      try { this.updateScaledBoxTilingUVs(chordWall); } catch (_) {}
+    }
 
     // The existing shortened infinity wall now maps its horizontal top face
     // with the same physical tile scale as the pool floor. No separate cap mesh is used.
@@ -7584,6 +7662,30 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       extension.userData.forceVerticalUV = true;
       extension.userData.isInfinityCatchSurface = true;
       extension.userData.isInfinityPoolWallExtension = true;
+
+      // Anchor the extension bottom to the catch-tank floor rather than letting
+      // the complete wall rise with the pool. BoxGeometry duplicates corner
+      // vertices per face, so retain every vertex on the original lower plane.
+      const extensionPositions = extension.geometry?.attributes?.position;
+      if (extensionPositions) {
+        let minLocalZ = Infinity;
+        for (let i = 0; i < extensionPositions.count; i++) {
+          minLocalZ = Math.min(minLocalZ, extensionPositions.getZ(i));
+        }
+        const bottomIndices = [];
+        for (let i = 0; i < extensionPositions.count; i++) {
+          if (Math.abs(extensionPositions.getZ(i) - minLocalZ) < 1e-6) bottomIndices.push(i);
+        }
+        const fixedBottomZ = tankTop - tankDepth;
+        extension.userData.infinityPoolWallBottomFixedZ = fixedBottomZ;
+        extension.userData.infinityPoolWallBottomVertexIndices = bottomIndices;
+        const localBottomZ = fixedBottomZ - this.getPoolElevation() - extension.position.z;
+        bottomIndices.forEach((vertexIndex) => extensionPositions.setZ(vertexIndex, localBottomZ));
+        extensionPositions.needsUpdate = true;
+        extension.geometry.computeVertexNormals?.();
+        extension.geometry.computeBoundingBox?.();
+        extension.geometry.computeBoundingSphere?.();
+      }
       this.updateScaledBoxTilingUVs(extension);
     });
 
