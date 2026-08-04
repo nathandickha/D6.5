@@ -7783,6 +7783,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const groundZ = this._getGroundTopLocalZ();
     const elevation = this.getPoolElevation();
     const tankClear = 0.72, tankWall = 0.20, tankDepth = 0.55, copingWidth = 0.25;
+    // Keep the pool-side edge beneath the spillway, but pull the outer tank
+    // boundary inward by one wall thickness so the built tank finishes at the
+    // previous outer edge of the visible tank water.
+    const tankOverallWidth = tankClear + tankWall;
     const tankTop = groundZ - 0.005;
     const tankFloorZ = tankTop - tankDepth;
     const segments = 48;
@@ -7813,7 +7817,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       const p = new THREE.Vector2(arc.a*Math.cos(t), arc.b*Math.sin(t));
       const n = new THREE.Vector2(Math.cos(t)/arc.a, Math.sin(t)/arc.b).normalize();
       tankInnerPts.push(p.clone().addScaledVector(n, wallThickness));
-      tankOuterPts.push(p.clone().addScaledVector(n, wallThickness + tankClear + tankWall*2));
+      tankOuterPts.push(p.clone().addScaledVector(n, wallThickness + tankOverallWidth));
     }
 
     const overflow = createPoolWater(this._createIndexedArcStripGeometry(innerWallPts, outerWallPts, 0));
@@ -7825,8 +7829,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const outerWall = this._addFeatureMesh(group, this._createIndexedVerticalArcGeometry(tankOuterPts,tankFloorZ,tankTop), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-wall-outer');
     outerWall.userData.isWall=true; outerWall.userData.isInfinityTankGroundFixed=true; outerWall.userData.infinityTankBaseZ=elevation;
 
-    const waterInner = tankInnerPts.map((p,i)=>p.clone().lerp(tankOuterPts[i], tankWall/(tankClear+tankWall*2)));
-    const waterOuter = tankOuterPts.map((p,i)=>p.clone().lerp(tankInnerPts[i], tankWall/(tankClear+tankWall*2)));
+    const waterInsetRatio = tankWall / tankOverallWidth;
+    const waterInner = tankInnerPts.map((p,i)=>p.clone().lerp(tankOuterPts[i], waterInsetRatio));
+    const waterOuter = tankOuterPts.map((p,i)=>p.clone().lerp(tankInnerPts[i], waterInsetRatio));
     const catchWater = createPoolWater(this._createIndexedArcStripGeometry(waterInner,waterOuter,0));
     catchWater.name='infinity-catch-water'; catchWater.position.z=tankTop-0.105; catchWater.userData.isInfinityWater=true; catchWater.userData.isInfinityTankGroundFixed=true; catchWater.userData.infinityTankBaseZ=catchWater.position.z+elevation; catchWater.frustumCulled=false; group.add(catchWater);
 
@@ -7843,7 +7848,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // their coping remain fixed with the catch tank from the pool wall through
     // to the widened outer tank wall.
     const tankSideWallCenterZ = tankTop - tankDepth * 0.5;
-    const spillwayEndPairs = [[tankInnerPts[0], tankOuterPts[0]], [tankInnerPts[tankSegments], tankOuterPts[tankSegments]]];
+    const spillwayEndPairs = [
+      [tankInnerPts[0], tankOuterPts[0]],
+      [tankInnerPts[tankInnerPts.length - 1], tankOuterPts[tankOuterPts.length - 1]]
+    ];
     spillwayEndPairs.forEach((pair, index) => {
       const [start, end] = pair;
       const radial = end.clone().sub(start);
@@ -7853,9 +7861,15 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       const angle = Math.atan2(radialDir.y, radialDir.x);
       const tankMid = start.clone().addScaledVector(radialDir, tankWallRun * 0.5);
 
+      // Build both radial end walls from the actual first/last tank boundary
+      // points. Using array endpoints avoids the far end disappearing when the
+      // arc segment count or extension angle changes.
+      const sideWallGeometry = this._applyMeterUVsToBoxGeometry(
+        new THREE.BoxGeometry(tankWallRun + tankWall, tankWall, tankDepth)
+      );
       const sideWall = this._addFeatureMesh(
         group,
-        this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun, tankWall, tankDepth)),
+        sideWallGeometry,
         tiled.clone(),
         { x: tankMid.x, y: tankMid.y, z: tankSideWallCenterZ },
         { x: 0, y: 0, z: angle },
@@ -7869,7 +7883,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
       const sideCap = this._addFeatureMesh(
         group,
-        this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun, copingWidth, copingThickness)),
+        this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun + copingWidth, copingWidth, copingThickness)),
         copingMaterial.clone?.() || copingMaterial,
         { x: tankMid.x, y: tankMid.y, z: tankTop + copingThickness * 0.5 },
         { x: 0, y: 0, z: angle },
