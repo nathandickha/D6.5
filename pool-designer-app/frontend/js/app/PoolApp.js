@@ -7416,15 +7416,28 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const uvs = [];
     const n = Math.min(innerPts.length, outerPts.length);
     if (n < 2) return new THREE.BufferGeometry();
+    const pushQuad = (a,b,c,d, uv=[0,0,1,0,0,1,1,1]) => {
+      positions.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z, c.x,c.y,c.z, b.x,b.y,b.z, d.x,d.y,d.z);
+      uvs.push(...uv.slice(0,6), ...uv.slice(4,6), ...uv.slice(2,4), ...uv.slice(6,8));
+    };
     for (let i = 0; i < n - 1; i += 1) {
       const a = innerPts[i], b = innerPts[i + 1], c = outerPts[i], d = outerPts[i + 1];
       const u0 = i / (n - 1), u1 = (i + 1) / (n - 1);
-      positions.push(a.x,a.y,z, c.x,c.y,z, b.x,b.y,z, b.x,b.y,z, c.x,c.y,z, d.x,d.y,z);
-      uvs.push(u0,0,u0,1,u1,0, u1,0,u0,1,u1,1);
+      pushQuad(new THREE.Vector3(a.x,a.y,z), new THREE.Vector3(c.x,c.y,z), new THREE.Vector3(b.x,b.y,z), new THREE.Vector3(d.x,d.y,z), [u0,0,u0,1,u1,0,u1,1]);
       if (thickness > 0) {
         const zb = z - thickness;
-        positions.push(a.x,a.y,zb,b.x,b.y,zb,c.x,c.y,zb, b.x,b.y,zb,d.x,d.y,zb,c.x,c.y,zb);
-        uvs.push(u0,0,u1,0,u0,1, u1,0,u1,1,u0,1);
+        // Bottom, inner fascia and outer fascia make the coping a closed solid.
+        pushQuad(new THREE.Vector3(a.x,a.y,zb), new THREE.Vector3(b.x,b.y,zb), new THREE.Vector3(c.x,c.y,zb), new THREE.Vector3(d.x,d.y,zb), [u0,0,u1,0,u0,1,u1,1]);
+        pushQuad(new THREE.Vector3(a.x,a.y,z), new THREE.Vector3(b.x,b.y,z), new THREE.Vector3(a.x,a.y,zb), new THREE.Vector3(b.x,b.y,zb), [u0,1,u1,1,u0,0,u1,0]);
+        pushQuad(new THREE.Vector3(d.x,d.y,z), new THREE.Vector3(c.x,c.y,z), new THREE.Vector3(d.x,d.y,zb), new THREE.Vector3(c.x,c.y,zb), [u1,1,u0,1,u1,0,u0,0]);
+      }
+    }
+    if (thickness > 0) {
+      const zb = z - thickness;
+      for (const [i, reverse] of [[0, true], [n - 1, false]]) {
+        const a=innerPts[i], b=outerPts[i];
+        const p0=new THREE.Vector3(a.x,a.y,z), p1=new THREE.Vector3(b.x,b.y,z), p2=new THREE.Vector3(a.x,a.y,zb), p3=new THREE.Vector3(b.x,b.y,zb);
+        if (reverse) pushQuad(p1,p0,p3,p2); else pushQuad(p0,p1,p2,p3);
       }
     }
     const g = new THREE.BufferGeometry();
@@ -7534,8 +7547,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (n < 2) return new THREE.BufferGeometry();
     const positions = [], uvs = [], indices = [];
     const tile = Math.max(0.05, Number(this.tileSize) || 0.3);
-    // Horizontal surfaces use the same world-planar metre UVs as pool floors.
-    // This keeps grout size, orientation and alignment stable around the curve.
     for (let i = 0; i < n; i += 1) {
       const a = innerPts[i], b = outerPts[i];
       positions.push(a.x, a.y, z, b.x, b.y, z);
@@ -7553,9 +7564,16 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
         uvs.push(a.x / tile, a.y / tile, b.x / tile, b.y / tile);
       }
       for (let i = 0; i < n - 1; i += 1) {
-        const a = base + i * 2, b = a + 1, c = a + 2, d = a + 3;
-        indices.push(a, c, b, c, d, b);
+        const t0=i*2,t1=t0+1,t2=t0+2,t3=t0+3;
+        const b0=base+t0,b1=base+t1,b2=base+t2,b3=base+t3;
+        indices.push(b0,b2,b1,b2,b3,b1);       // bottom
+        indices.push(t0,b0,t2,t2,b0,b2);       // inner fascia
+        indices.push(t3,b3,t1,t1,b3,b1);       // outer fascia
       }
+      // Close both radial ends.
+      indices.push(1,base+1,0,0,base+1,base);
+      const last=(n-1)*2, lastBase=base+last;
+      indices.push(last,lastBase,last+1,last+1,lastBase,lastBase+1);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -7682,6 +7700,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       ? arc.wall.material.find(Boolean)
       : arc.wall?.material;
     const ovalWallMaterial = sourceWallMaterial?.clone?.() || sourceWallMaterial || tiled.clone();
+    ovalWallMaterial.side = THREE.DoubleSide;
+    ovalWallMaterial.needsUpdate = true;
     const makeArcPoints = (startAngle, sweep, count = 96) => {
       const inner = [], outer = [];
       for (let i = 0; i <= count; i += 1) {
@@ -7741,6 +7761,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       ? sourceCoping.material.find(Boolean)
       : sourceCoping?.material;
     const ovalCopingMaterial = sourceMaterial?.clone?.() || sourceMaterial || tiled.clone();
+    ovalCopingMaterial.side = THREE.DoubleSide;
+    ovalCopingMaterial.needsUpdate = true;
     const sourceTopZ = Number(sourceCoping?.position?.z || 0) + copingThickness;
     const remainingCoping = this._addFeatureMesh(
       group,
@@ -7771,8 +7793,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       const n = new THREE.Vector2(Math.cos(t)/arc.a, Math.sin(t)/arc.b).normalize();
       innerWallPts.push(p.clone());
       outerWallPts.push(p.clone().addScaledVector(n, wallThickness));
-      tankInnerPts.push(p.clone().addScaledVector(n, wallThickness + 0.015));
-      tankOuterPts.push(p.clone().addScaledVector(n, wallThickness + 0.015 + tankClear + tankWall*2));
+      tankInnerPts.push(p.clone().addScaledVector(n, wallThickness));
+      tankOuterPts.push(p.clone().addScaledVector(n, wallThickness + tankClear + tankWall*2));
     }
 
     const overflow = createPoolWater(this._createIndexedArcStripGeometry(innerWallPts, outerWallPts, 0));
