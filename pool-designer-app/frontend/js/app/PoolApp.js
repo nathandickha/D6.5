@@ -7502,15 +7502,44 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
   }
 
 
+  _arcCumulativeDistances(points) {
+    const distances = [0];
+    for (let i = 1; i < points.length; i += 1) {
+      distances.push(distances[i - 1] + points[i].distanceTo(points[i - 1]));
+    }
+    return distances;
+  }
+
+  _applyMeterUVsToBoxGeometry(geometry, tileSize = this.tileSize || 0.3) {
+    const pos = geometry?.attributes?.position;
+    const normal = geometry?.attributes?.normal;
+    if (!pos || !normal) return geometry;
+    const tile = Math.max(0.05, Number(tileSize) || 0.3);
+    const uvs = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i += 1) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const nx = Math.abs(normal.getX(i)), ny = Math.abs(normal.getY(i)), nz = Math.abs(normal.getZ(i));
+      let u, v;
+      if (nz >= nx && nz >= ny) { u = x / tile; v = y / tile; }
+      else if (ny >= nx) { u = x / tile; v = z / tile; }
+      else { u = y / tile; v = z / tile; }
+      uvs[i * 2] = u; uvs[i * 2 + 1] = v;
+    }
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    return geometry;
+  }
+
   _createIndexedArcStripGeometry(innerPts, outerPts, z, thickness = 0) {
     const n = Math.min(innerPts.length, outerPts.length);
     if (n < 2) return new THREE.BufferGeometry();
     const positions = [], uvs = [], indices = [];
-    // One shared vertex row per curved edge prevents visible seams between arc segments.
+    const tile = Math.max(0.05, Number(this.tileSize) || 0.3);
+    // Horizontal surfaces use the same world-planar metre UVs as pool floors.
+    // This keeps grout size, orientation and alignment stable around the curve.
     for (let i = 0; i < n; i += 1) {
-      const u = i / (n - 1);
-      positions.push(innerPts[i].x, innerPts[i].y, z, outerPts[i].x, outerPts[i].y, z);
-      uvs.push(u, 0, u, 1);
+      const a = innerPts[i], b = outerPts[i];
+      positions.push(a.x, a.y, z, b.x, b.y, z);
+      uvs.push(a.x / tile, a.y / tile, b.x / tile, b.y / tile);
     }
     for (let i = 0; i < n - 1; i += 1) {
       const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
@@ -7519,9 +7548,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (thickness > 0) {
       const base = positions.length / 3;
       for (let i = 0; i < n; i += 1) {
-        const u = i / (n - 1);
-        positions.push(innerPts[i].x, innerPts[i].y, z - thickness, outerPts[i].x, outerPts[i].y, z - thickness);
-        uvs.push(u, 0, u, 1);
+        const a = innerPts[i], b = outerPts[i];
+        positions.push(a.x, a.y, z - thickness, b.x, b.y, z - thickness);
+        uvs.push(a.x / tile, a.y / tile, b.x / tile, b.y / tile);
       }
       for (let i = 0; i < n - 1; i += 1) {
         const a = base + i * 2, b = a + 1, c = a + 2, d = a + 3;
@@ -7540,10 +7569,12 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const n = points.length;
     if (n < 2) return new THREE.BufferGeometry();
     const positions = [], uvs = [], indices = [];
+    const tile = Math.max(0.05, Number(this.tileSize) || 0.3);
+    const distance = this._arcCumulativeDistances(points);
     for (let i = 0; i < n; i += 1) {
-      const u = i / (n - 1), p = points[i];
+      const u = distance[i] / tile, p = points[i];
       positions.push(p.x, p.y, topZ, p.x, p.y, bottomZ);
-      uvs.push(u, 1, u, 0);
+      uvs.push(u, topZ / tile, u, bottomZ / tile);
     }
     for (let i = 0; i < n - 1; i += 1) {
       const a=i*2,b=a+1,c=a+2,d=a+3;
@@ -7561,30 +7592,46 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const n = Math.min(innerPts.length, outerPts.length);
     if (n < 2) return new THREE.BufferGeometry();
     const positions = [], uvs = [], indices = [];
-    const addSurface = (rowA, rowB, reverse = false) => {
+    const tile = Math.max(0.05, Number(this.tileSize) || 0.3);
+    const innerDistance = this._arcCumulativeDistances(innerPts);
+    const outerDistance = this._arcCumulativeDistances(outerPts);
+
+    const addVerticalSurface = (points, distances, reverse = false) => {
       const base = positions.length / 3;
-      for (let i=0;i<n;i+=1) {
-        const u=i/(n-1), a=rowA(i), b=rowB(i);
-        positions.push(a.x,a.y,a.z,b.x,b.y,b.z); uvs.push(u,0,u,1);
+      for (let i = 0; i < n; i += 1) {
+        const p = points[i], u = distances[i] / tile;
+        positions.push(p.x,p.y,bottomZ,p.x,p.y,topZ);
+        uvs.push(u,bottomZ / tile,u,topZ / tile);
       }
       for (let i=0;i<n-1;i+=1) {
         const a=base+i*2,b=a+1,c=a+2,d=a+3;
         if (reverse) indices.push(a,c,b,c,d,b); else indices.push(a,b,c,c,b,d);
       }
     };
-    addSurface(i=>new THREE.Vector3(innerPts[i].x,innerPts[i].y,bottomZ), i=>new THREE.Vector3(innerPts[i].x,innerPts[i].y,topZ), false);
-    addSurface(i=>new THREE.Vector3(outerPts[i].x,outerPts[i].y,bottomZ), i=>new THREE.Vector3(outerPts[i].x,outerPts[i].y,topZ), true);
-    addSurface(i=>new THREE.Vector3(innerPts[i].x,innerPts[i].y,topZ), i=>new THREE.Vector3(outerPts[i].x,outerPts[i].y,topZ), false);
+    addVerticalSurface(innerPts, innerDistance, false);
+    addVerticalSurface(outerPts, outerDistance, true);
+
+    // Wall top uses world-planar UVs, matching pool floors and wall caps.
+    const topBase = positions.length / 3;
+    for (let i=0;i<n;i+=1) {
+      const a=innerPts[i], b=outerPts[i];
+      positions.push(a.x,a.y,topZ,b.x,b.y,topZ);
+      uvs.push(a.x / tile,a.y / tile,b.x / tile,b.y / tile);
+    }
+    for (let i=0;i<n-1;i+=1) {
+      const a=topBase+i*2,b=a+1,c=a+2,d=a+3;
+      indices.push(a,b,c,c,b,d);
+    }
+
     const addCap=(i,reverse)=>{
       const base=positions.length/3;
-      const pts=[
-        new THREE.Vector3(innerPts[i].x,innerPts[i].y,bottomZ),
-        new THREE.Vector3(outerPts[i].x,outerPts[i].y,bottomZ),
-        new THREE.Vector3(innerPts[i].x,innerPts[i].y,topZ),
-        new THREE.Vector3(outerPts[i].x,outerPts[i].y,topZ)
-      ];
-      for (const q of pts) positions.push(q.x,q.y,q.z);
-      uvs.push(0,0,1,0,0,1,1,1);
+      const inner=innerPts[i], outer=outerPts[i];
+      const width=inner.distanceTo(outer);
+      positions.push(
+        inner.x,inner.y,bottomZ, outer.x,outer.y,bottomZ,
+        inner.x,inner.y,topZ, outer.x,outer.y,topZ
+      );
+      uvs.push(0,bottomZ/tile,width/tile,bottomZ/tile,0,topZ/tile,width/tile,topZ/tile);
       if(reverse) indices.push(base,base+2,base+1,base+2,base+3,base+1);
       else indices.push(base,base+1,base+2,base+2,base+1,base+3);
     };
@@ -7753,9 +7800,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const endPairs=[[tankInnerPts[0],tankOuterPts[0]],[tankInnerPts[segments],tankOuterPts[segments]]];
     endPairs.forEach((pair,index)=>{
       const [a,b]=pair; const dir=b.clone().sub(a); const len=dir.length(); const mid=a.clone().add(b).multiplyScalar(.5); const ang=Math.atan2(dir.y,dir.x);
-      const sideWall=this._addFeatureMesh(group,new THREE.BoxGeometry(len,tankWall,tankDepth),tiled.clone(),{x:mid.x,y:mid.y,z:(tankTop+tankFloorZ)/2},{x:0,y:0,z:ang},`infinity-catch-side-wall-${index?'b':'a'}`);
+      const sideWall=this._addFeatureMesh(group,this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(len,tankWall,tankDepth)),tiled.clone(),{x:mid.x,y:mid.y,z:(tankTop+tankFloorZ)/2},{x:0,y:0,z:ang},`infinity-catch-side-wall-${index?'b':'a'}`);
       sideWall.userData.isInfinityTankGroundFixed=true; sideWall.userData.infinityTankBaseZ=sideWall.position.z+elevation;
-      const sideCap=this._addFeatureMesh(group,new THREE.BoxGeometry(len,copingWidth,0.05),copingMaterial.clone?.()||copingMaterial,{x:mid.x,y:mid.y,z:tankTop+0.025},{x:0,y:0,z:ang},`infinity-catch-side-coping-${index?'b':'a'}`);
+      const sideCap=this._addFeatureMesh(group,this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(len,copingWidth,0.05)),copingMaterial.clone?.()||copingMaterial,{x:mid.x,y:mid.y,z:tankTop+0.025},{x:0,y:0,z:ang},`infinity-catch-side-coping-${index?'b':'a'}`);
       sideCap.userData.isInfinityTankGroundFixed=true; sideCap.userData.infinityTankBaseZ=sideCap.position.z+elevation;
     });
 
