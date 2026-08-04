@@ -7473,35 +7473,57 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       this._infinityWallGeometryEntries = [{ mesh: wall, geometry: original }];
     }
 
+    // The oval coping is a single extruded ring. Removing triangles from that
+    // indexed extrusion proved unreliable because its cap triangles span broad
+    // angular regions. Hide the authored ring and rebuild only the remaining
+    // 270-degree arc as a dedicated coping strip. The missing 90-degree arc is
+    // therefore a real opening, not a transparent overlay or visual mask.
     const coping = this.poolGroup?.userData?.copingMesh;
-    if (coping?.geometry?.attributes?.position) {
-      const original = coping.geometry;
-      const src = original.index ? original.toNonIndexed() : original.clone();
-      const p = src.attributes.position;
-      const uv = src.attributes.uv;
-      const outP = [], outUv = [];
-      for (let i = 0; i < p.count; i += 3) {
-        const cx = (p.getX(i)+p.getX(i+1)+p.getX(i+2))/3;
-        const cy = (p.getY(i)+p.getY(i+1)+p.getY(i+2))/3;
-        if (inArc(cx, cy)) continue;
-        for (let k=0;k<3;k++) {
-          outP.push(p.getX(i+k),p.getY(i+k),p.getZ(i+k));
-          if (uv) outUv.push(uv.getX(i+k),uv.getY(i+k));
-        }
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(outP,3));
-      if (outUv.length) g.setAttribute('uv', new THREE.Float32BufferAttribute(outUv,2));
-      g.computeVertexNormals();
-      coping.geometry = g;
-      this._infinityCopingGeometryEntries = [{ mesh: coping, geometry: original }];
+    if (coping) {
+      coping.visible = false;
+      if (!this._infinityHiddenCoping.includes(coping)) this._infinityHiddenCoping.push(coping);
     }
-    return { centerAngle, halfArc, a, b };
+    return { centerAngle, halfArc, a, b, coping };
   }
 
   _createOvalInfinityEdge(group, length, width, side) {
     const arc = this._applyOvalInfinityArcCut(side, length, width);
     const tiled = this._getPoolTileMaterial();
+
+    // Rebuild the oval coping with the active infinity quadrant omitted.
+    // Coping dimensions match the oval builder: 200 mm wall + 50 mm inner
+    // overhang = 250 mm total width, with a 50 mm coping thickness.
+    const copingThickness = 0.05;
+    const wallThickness = 0.20;
+    const copingInnerOverhang = 0.05;
+    const copingSegments = 144;
+    const copingInnerPts = [];
+    const copingOuterPts = [];
+    const copingStart = arc.centerAngle + arc.halfArc;
+    const copingSweep = Math.PI * 2 - arc.halfArc * 2;
+    for (let i = 0; i <= copingSegments; i += 1) {
+      const t = copingStart + copingSweep * (i / copingSegments);
+      const boundary = new THREE.Vector2(arc.a * Math.cos(t), arc.b * Math.sin(t));
+      const normal = new THREE.Vector2(Math.cos(t) / arc.a, Math.sin(t) / arc.b).normalize();
+      copingInnerPts.push(boundary.clone().addScaledVector(normal, -copingInnerOverhang));
+      copingOuterPts.push(boundary.clone().addScaledVector(normal, wallThickness));
+    }
+    const sourceCoping = arc.coping;
+    const sourceMaterial = Array.isArray(sourceCoping?.material)
+      ? sourceCoping.material.find(Boolean)
+      : sourceCoping?.material;
+    const ovalCopingMaterial = sourceMaterial?.clone?.() || sourceMaterial || tiled.clone();
+    const sourceTopZ = Number(sourceCoping?.position?.z || 0) + copingThickness;
+    const remainingCoping = this._addFeatureMesh(
+      group,
+      this._createStripGeometry(copingInnerPts, copingOuterPts, sourceTopZ, copingThickness),
+      ovalCopingMaterial,
+      { x: 0, y: 0, z: 0 },
+      null,
+      'infinity-oval-remaining-coping'
+    );
+    remainingCoping.userData.isCoping = true;
+    remainingCoping.renderOrder = Number(sourceCoping?.renderOrder || 3);
     const poolWaterMesh = this.poolGroup?.userData?.waterMesh;
     let poolWaterZ = -0.1;
     if (poolWaterMesh?.geometry) {
@@ -7510,7 +7532,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     }
     const groundZ = this._getGroundTopLocalZ();
     const elevation = this.getPoolElevation();
-    const wallThickness = 0.20, tankClear = 0.72, tankWall = 0.20, tankDepth = 0.55, copingWidth = 0.25;
+    const tankClear = 0.72, tankWall = 0.20, tankDepth = 0.55, copingWidth = 0.25;
     const tankTop = groundZ - 0.005;
     const tankFloorZ = tankTop - tankDepth;
     const segments = 48;
