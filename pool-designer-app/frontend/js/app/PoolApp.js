@@ -7907,8 +7907,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       // Build both radial end walls from the actual first/last tank boundary
       // points. Using array endpoints avoids the far end disappearing when the
       // arc segment count or extension angle changes.
+      // Stop the radial side wall exactly at the curved outer wall's outside
+      // face. The previous extra `+ tankWall` made each side wall project past
+      // the tank boundary by 200 mm.
       const sideWallGeometry = this._applyMeterUVsToBoxGeometry(
-        new THREE.BoxGeometry(tankWallRun + tankWall, tankWall, tankDepth)
+        new THREE.BoxGeometry(tankWallRun, tankWall, tankDepth)
       );
       const sideWall = this._addFeatureMesh(
         group,
@@ -7926,7 +7929,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
       const sideCap = this._addFeatureMesh(
         group,
-        this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun + copingWidth, copingWidth, copingThickness)),
+        // Match the coping run to the shortened side wall. Its 250 mm width
+        // remains across the wall, but it no longer extends beyond the curved
+        // outer coping at either tank end.
+        this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun, copingWidth, copingThickness)),
         copingMaterial.clone?.() || copingMaterial,
         { x: tankMid.x, y: tankMid.y, z: tankTop + copingThickness * 0.5 },
         { x: 0, y: 0, z: angle },
