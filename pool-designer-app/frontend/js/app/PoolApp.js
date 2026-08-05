@@ -7828,8 +7828,31 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const floor = this._addFeatureMesh(group, this._createIndexedArcStripGeometry(tankInnerPts,tankOuterPts,tankFloorZ,0.10), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-floor');
     floor.userData.isFloor=true; floor.userData.isInfinityTankGroundFixed=true; floor.userData.infinityTankBaseZ=elevation;
 
-    const outerWall = this._addFeatureMesh(group, this._createIndexedVerticalArcGeometry(tankOuterPts,tankFloorZ,tankTop), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-wall-outer');
-    outerWall.userData.isWall=true; outerWall.userData.isInfinityTankGroundFixed=true; outerWall.userData.infinityTankBaseZ=elevation;
+    // Build the curved outer tank wall as a complete 200 mm-thick wall, not a
+    // single one-sided surface. `tankOuterPts` is the inner/water-facing face;
+    // the second arc is the outside face. This matches the construction and
+    // visibility of the radial side walls from every camera angle.
+    const tankOuterFacePts = tankOuterPts.map((p, i) => {
+      const q = tankInnerPts[i];
+      const outward = p.clone().sub(q).normalize();
+      return p.clone().addScaledVector(outward, tankWall);
+    });
+    const outerWallMaterial = tiled.clone();
+    outerWallMaterial.side = THREE.DoubleSide;
+    outerWallMaterial.needsUpdate = true;
+    const outerWall = this._addFeatureMesh(
+      group,
+      this._createIndexedOvalWallArcGeometry(tankOuterPts, tankOuterFacePts, tankFloorZ, tankTop),
+      outerWallMaterial,
+      {x:0,y:0,z:0},
+      null,
+      'infinity-catch-wall-outer'
+    );
+    outerWall.userData.isWall=true;
+    outerWall.userData.forceVerticalUV=true;
+    outerWall.userData.isInfinityCatchSurface=true;
+    outerWall.userData.isInfinityTankGroundFixed=true;
+    outerWall.userData.infinityTankBaseZ=elevation;
 
     // Fill the tank water to all enclosing surfaces. Reuse the exact tank
     // boundary vertices so the water meets the pool-side wall, curved outer
@@ -7842,10 +7865,26 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     let copingMaterial=tiled.clone();
     const copingSource=this.poolGroup?.userData?.copingMesh?.material;
     if (copingSource) copingMaterial=(Array.isArray(copingSource)?copingSource[0]:copingSource).clone?.() || (Array.isArray(copingSource)?copingSource[0]:copingSource);
-    const capInner=tankOuterPts.map((p,i)=>{ const q=tankInnerPts[i]; const n=p.clone().sub(q).normalize(); return p.clone().addScaledVector(n,-copingWidth*0.5); });
-    const capOuter=tankOuterPts.map((p,i)=>{ const q=tankInnerPts[i]; const n=p.clone().sub(q).normalize(); return p.clone().addScaledVector(n,copingWidth*0.5); });
-    const outerCoping=this._addFeatureMesh(group,this._createIndexedArcStripGeometry(capInner,capOuter,tankTop+0.025),copingMaterial,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
-    outerCoping.userData.isInfinityTankGroundFixed=true; outerCoping.userData.infinityTankBaseZ=elevation;
+    // Centre the 250 mm coping over the 200 mm wall, giving a 25 mm overhang
+    // on both faces. Give it the same 50 mm solid thickness as the side-wall
+    // coping instead of rendering it as a zero-thickness curved plane.
+    const copingOverhang = Math.max(0, (copingWidth - tankWall) * 0.5);
+    const capInner=tankOuterPts.map((p,i)=>{ const q=tankInnerPts[i]; const n=p.clone().sub(q).normalize(); return p.clone().addScaledVector(n,-copingOverhang); });
+    const capOuter=tankOuterFacePts.map((p,i)=>{ const q=tankOuterPts[i]; const n=p.clone().sub(q).normalize(); return p.clone().addScaledVector(n,copingOverhang); });
+    const outerCopingMaterial = copingMaterial.clone?.() || copingMaterial;
+    outerCopingMaterial.side = THREE.DoubleSide;
+    outerCopingMaterial.needsUpdate = true;
+    const outerCoping=this._addFeatureMesh(
+      group,
+      this._createIndexedArcStripGeometry(capInner,capOuter,tankTop+copingThickness,copingThickness),
+      outerCopingMaterial,
+      {x:0,y:0,z:0},
+      null,
+      'infinity-catch-coping-outer'
+    );
+    outerCoping.userData.isCoping=true;
+    outerCoping.userData.isInfinityTankGroundFixed=true;
+    outerCoping.userData.infinityTankBaseZ=elevation;
 
     // The oval tank now provides the complete radial width itself. There are
     // no raised-pool wall extensions over the tank ends; both end walls and
@@ -7853,8 +7892,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // to the widened outer tank wall.
     const tankSideWallCenterZ = tankTop - tankDepth * 0.5;
     const spillwayEndPairs = [
-      [tankInnerPts[0], tankOuterPts[0]],
-      [tankInnerPts[tankInnerPts.length - 1], tankOuterPts[tankOuterPts.length - 1]]
+      [tankInnerPts[0], tankOuterFacePts[0]],
+      [tankInnerPts[tankInnerPts.length - 1], tankOuterFacePts[tankOuterFacePts.length - 1]]
     ];
     spillwayEndPairs.forEach((pair, index) => {
       const [start, end] = pair;
@@ -7906,7 +7945,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     sheet.userData.infinitySheetBottomVertexIndices=Array.from({length:sheetTopPts.length},(_,i)=>i*2+1); sheet.frustumCulled=false; group.add(sheet);
 
     const ground=this.ground||this.scene?.userData?.ground;
-    if(ground){ const points=[...tankInnerPts,...tankOuterPts.slice().reverse()]; const existing=Array.isArray(ground.userData.extraGroundVoids)?ground.userData.extraGroundVoids.filter(e=>e?.name!=='infinity-catch-tank'):[]; ground.userData.extraGroundVoids=[...existing,{name:'infinity-catch-tank',points}]; }
+    if(ground){ const points=[...tankInnerPts,...tankOuterFacePts.slice().reverse()]; const existing=Array.isArray(ground.userData.extraGroundVoids)?ground.userData.extraGroundVoids.filter(e=>e?.name!=='infinity-catch-tank'):[]; ground.userData.extraGroundVoids=[...existing,{name:'infinity-catch-tank',points}]; }
     if(!Array.isArray(this.poolGroup?.userData?.animatables)) this.poolGroup.userData.animatables=[];
     this.poolGroup.userData.animatables.push(overflow,catchWater,sheet);
   }
