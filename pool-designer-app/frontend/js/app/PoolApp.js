@@ -630,36 +630,165 @@ export class PoolApp {
   }
 
   _createLShapeInfinityEdge(group){
-    const {path,range,pieces}=this._splitLPathByRange(); const elevation=this.getPoolElevation(); const depth=Math.max(0.4,Number(this.poolParams?.deepDepth||this.poolParams?.depth||1.8));
+    const {path,range,pieces}=this._splitLPathByRange();
+    const elevation=this.getPoolElevation();
+    const depth=Math.max(0.4,Number(this.poolParams?.deepDepth||this.poolParams?.depth||1.8));
     const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10,tankFloorZ=-Math.max(depth,0.7),tankTop=-0.20,outerOffset=0.80;
     const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
     const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
     const tileMat=(Array.isArray(tileSource)?tileSource[0]:tileSource)?.clone?.() || new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide});
     const copingMat=(Array.isArray(copingSource)?copingSource[0]:copingSource)?.clone?.() || tileMat.clone();
-    // Hide authored L walls/coping and rebuild split pieces, allowing partial-wall openings.
-    this.poolGroup?.traverse?.(o=>{ if(o?.userData?.isWall||o?.userData?.isCoping){ if(o===group)return; if(!this._infinityHiddenCoping)this._infinityHiddenCoping=[]; if(!this._infinityHiddenCoping.includes(o))this._infinityHiddenCoping.push(o); o.visible=false; } });
-    const rect=(a,b,inset,outset)=>{ const t=b.clone().sub(a).normalize(), out=new THREE.Vector2(t.y,-t.x); return [a.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,outset),a.clone().addScaledVector(out,outset)]; };
-    const selectedPieces=pieces.filter(x=>x.selected);
+
+    // Hide the authored L walls/coping and rebuild split pieces so a handle can stop mid-wall.
+    this.poolGroup?.traverse?.(o=>{
+      if(o?.userData?.isWall||o?.userData?.isCoping){
+        if(o===group)return;
+        if(!this._infinityHiddenCoping)this._infinityHiddenCoping=[];
+        if(!this._infinityHiddenCoping.includes(o))this._infinityHiddenCoping.push(o);
+        o.visible=false;
+      }
+    });
+
+    const rect=(a,b,inset,outset)=>{
+      const t=b.clone().sub(a).normalize(),out=new THREE.Vector2(t.y,-t.x);
+      return [a.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,outset),a.clone().addScaledVector(out,outset)];
+    };
+
     for(const pc of pieces){
-      if(pc.p0.distanceTo(pc.p1)<0.01)continue; const wallPlan=rect(pc.p0,pc.p1,-wallT*0.5,wallT*0.5); const top=pc.selected?loweredTop:0;
-      const wm=tileMat.clone?.()||tileMat; wm.side=THREE.DoubleSide; const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,-depth,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall'); w.userData.isWall=true;w.userData.forceVerticalUV=true;
-      if(!pc.selected){ const capPlan=rect(pc.p0,pc.p1,-copingW*0.5,copingW*0.5); const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide; const c=this._addFeatureMesh(group,this._createPlanPrismGeometry(capPlan,0, copingH),cm,{x:0,y:0,z:0},null,'infinity-l-remaining-coping');c.userData.isCoping=true; }
+      if(pc.p0.distanceTo(pc.p1)<0.01)continue;
+      const wallPlan=rect(pc.p0,pc.p1,-wallT*0.5,wallT*0.5);
+      const top=pc.selected?loweredTop:0;
+      const wm=tileMat.clone?.()||tileMat;wm.side=THREE.DoubleSide;
+      const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,-depth,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall');
+      w.userData.isWall=true;w.userData.forceVerticalUV=true;
+      if(!pc.selected){
+        const capPlan=rect(pc.p0,pc.p1,-copingW*0.5,copingW*0.5);
+        const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;
+        const c=this._addFeatureMesh(group,this._createPlanPrismGeometry(capPlan,0,copingH),cm,{x:0,y:0,z:0},null,'infinity-l-remaining-coping');
+        c.userData.isCoping=true;
+      }
     }
-    const waterMeshes=[]; const groundPts=[];
-    for(const pc of selectedPieces){
-      const t=pc.p1.clone().sub(pc.p0).normalize(), out=new THREE.Vector2(t.y,-t.x); const inner0=pc.p0.clone().addScaledVector(out,wallT*0.5),inner1=pc.p1.clone().addScaledVector(out,wallT*0.5); const outer0=pc.p0.clone().addScaledVector(out,outerOffset),outer1=pc.p1.clone().addScaledVector(out,outerOffset);
-      const overflowPlan=[pc.p0.clone().addScaledVector(out,-wallT*0.5),pc.p1.clone().addScaledVector(out,-wallT*0.5),inner1.clone(),inner0.clone()]; const ow=createPoolWater(this._createPlanPrismGeometry(overflowPlan,loweredTop+0.002,loweredTop+0.012));ow.name='infinity-horizontal-water';ow.userData.isInfinityWater=true;group.add(ow);waterMeshes.push(ow);
-      const floorPlan=[inner0,inner1,outer1,outer0]; const fm=tileMat.clone?.()||tileMat;fm.side=THREE.DoubleSide; const fl=this._addFeatureMesh(group,this._createPlanPrismGeometry(floorPlan,tankFloorZ,tankFloorZ+0.1),fm,{x:0,y:0,z:0},null,'infinity-catch-floor');fl.userData.isFloor=true;fl.userData.isInfinityTankGroundFixed=true;fl.userData.infinityTankBaseZ=elevation;
-      const water=createPoolWater(this._createPlanPrismGeometry(floorPlan,tankTop-0.01,tankTop));water.name='infinity-catch-water';water.userData.isInfinityWater=true;water.userData.isInfinityTankGroundFixed=true;water.userData.infinityTankBaseZ=elevation;group.add(water);waterMeshes.push(water);
-      const outerWallPlan=rect(outer0,outer1,0,wallT); const om=tileMat.clone?.()||tileMat;om.side=THREE.DoubleSide;const wall=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerWallPlan,tankFloorZ,tankTop),om,{x:0,y:0,z:0},null,'infinity-catch-wall-outer');wall.userData.isWall=true;wall.userData.forceVerticalUV=true;wall.userData.isInfinityTankGroundFixed=true;wall.userData.infinityTankBaseZ=elevation;
-      const outerCapPlan=rect(outer0,outer1,-0.025,wallT+0.025);const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;const cap=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerCapPlan,tankTop,tankTop+copingH),cm,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');cap.userData.isCoping=true;cap.userData.isInfinityTankGroundFixed=true;cap.userData.infinityTankBaseZ=elevation;
-      const sheetPlan=[inner0,inner1,inner1.clone().addScaledVector(out,0.01),inner0.clone().addScaledVector(out,0.01)]; const sh=createPoolWater(this._createPlanPrismGeometry(sheetPlan,tankTop,loweredTop));sh.name='infinity-water-sheet';sh.userData.isInfinitySpillover=true;group.add(sh);waterMeshes.push(sh);
-      groundPts.push(inner0,inner1,outer1,outer0);
+
+    // Build one ordered centreline for the complete selected range. Every tank surface
+    // is derived from this same line, so adjoining wall sections share exact corner vertices.
+    const sweep=this._lInfinitySweep(range.start,range.end,path.total);
+    const unwrappedEnd=range.start+sweep;
+    const distances=[range.start];
+    for(const seg of path.segments){
+      for(let k=-1;k<=2;k++){
+        const d=seg.end+k*path.total;
+        if(d>range.start+1e-7&&d<unwrappedEnd-1e-7)distances.push(d);
+      }
     }
-    // Close only the two overall range ends; intermediate corners share their vertices.
-    [range.start,range.end].forEach((d,index)=>{ const hit=this._pointOnLPath(d),t=hit.segment.b.clone().sub(hit.segment.a).normalize(),out=new THREE.Vector2(t.y,-t.x),base=hit.point.clone().addScaledVector(out,wallT*0.5),far=hit.point.clone().addScaledVector(out,outerOffset+wallT); const sideDir=t.clone().multiplyScalar(index?wallT:-wallT); const plan=[base,far,far.clone().add(sideDir),base.clone().add(sideDir)]; const sm=tileMat.clone?.()||tileMat;sm.side=THREE.DoubleSide;const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankFloorZ,tankTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${index?'b':'a'}`);sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation; const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankTop,tankTop+copingH),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${index?'b':'a'}`);cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation; });
-    const ground=this.ground||this.scene?.userData?.ground;if(ground&&groundPts.length){const existing=Array.isArray(ground.userData.extraGroundVoids)?ground.userData.extraGroundVoids.filter(e=>e?.name!=='infinity-catch-tank'):[];ground.userData.extraGroundVoids=[...existing,{name:'infinity-catch-tank',points:groundPts}];}
-    if(!Array.isArray(this.poolGroup?.userData?.animatables))this.poolGroup.userData.animatables=[];this.poolGroup.userData.animatables.push(...waterMeshes);
+    distances.push(unwrappedEnd);
+    distances.sort((a,b)=>a-b);
+    const centre=distances.map(d=>this._pointOnLPath(d).point.clone());
+
+    const lineIntersection=(p1,d1,p2,d2)=>{
+      const cross=d1.x*d2.y-d1.y*d2.x;
+      if(Math.abs(cross)<1e-8)return null;
+      const q=p2.clone().sub(p1);
+      const t=(q.x*d2.y-q.y*d2.x)/cross;
+      return p1.clone().addScaledVector(d1,t);
+    };
+    const offsetOpenPolyline=(points,offset)=>{
+      if(points.length<2)return points.map(p=>p.clone());
+      const tangents=[];const normals=[];
+      for(let i=0;i<points.length-1;i++){
+        const t=points[i+1].clone().sub(points[i]).normalize();
+        tangents.push(t);normals.push(new THREE.Vector2(t.y,-t.x));
+      }
+      return points.map((p,i)=>{
+        if(i===0)return p.clone().addScaledVector(normals[0],offset);
+        if(i===points.length-1)return p.clone().addScaledVector(normals[normals.length-1],offset);
+        const a=p.clone().addScaledVector(normals[i-1],offset);
+        const b=p.clone().addScaledVector(normals[i],offset);
+        const hit=lineIntersection(a,tangents[i-1],b,tangents[i]);
+        // Clamp pathological mitres at tight/reflex corners.
+        if(!hit||hit.distanceTo(p)>Math.max(1.5,Math.abs(offset)*4)){
+          const n=normals[i-1].clone().add(normals[i]);
+          if(n.lengthSq()<1e-8)return a;
+          n.normalize();
+          const denom=Math.max(0.2,n.dot(normals[i]));
+          return p.clone().addScaledVector(n,offset/denom);
+        }
+        return hit;
+      });
+    };
+    const stripPolygon=(inner,outer)=>[...inner.map(p=>p.clone()),...outer.slice().reverse().map(p=>p.clone())];
+
+    const poolInner=offsetOpenPolyline(centre,-wallT*0.5);
+    const poolOuter=offsetOpenPolyline(centre, wallT*0.5);
+    const sheetOuter=offsetOpenPolyline(centre, wallT*0.5+0.01);
+    const tankOuterInner=offsetOpenPolyline(centre,outerOffset);
+    const tankOuterFace=offsetOpenPolyline(centre,outerOffset+wallT);
+    const copingInner=offsetOpenPolyline(centre,outerOffset-0.025);
+    const copingOuter=offsetOpenPolyline(centre,outerOffset+wallT+0.025);
+
+    const waterMeshes=[];
+    const overflowPlan=stripPolygon(poolInner,poolOuter);
+    if(overflowPlan.length>=4){
+      const ow=createPoolWater(this._createPlanPrismGeometry(overflowPlan,loweredTop+0.002,loweredTop+0.012));
+      ow.name='infinity-horizontal-water';ow.userData.isInfinityWater=true;group.add(ow);waterMeshes.push(ow);
+    }
+
+    const tankPlan=stripPolygon(poolOuter,tankOuterInner);
+    if(tankPlan.length>=4){
+      const fm=tileMat.clone?.()||tileMat;fm.side=THREE.DoubleSide;
+      const fl=this._addFeatureMesh(group,this._createPlanPrismGeometry(tankPlan,tankFloorZ,tankFloorZ+0.1),fm,{x:0,y:0,z:0},null,'infinity-catch-floor');
+      fl.userData.isFloor=true;fl.userData.isInfinityTankGroundFixed=true;fl.userData.infinityTankBaseZ=elevation;
+      const water=createPoolWater(this._createPlanPrismGeometry(tankPlan,tankTop-0.01,tankTop));
+      water.name='infinity-catch-water';water.userData.isInfinityWater=true;water.userData.isInfinityTankGroundFixed=true;water.userData.infinityTankBaseZ=elevation;group.add(water);waterMeshes.push(water);
+    }
+
+    const outerWallPlan=stripPolygon(tankOuterInner,tankOuterFace);
+    if(outerWallPlan.length>=4){
+      const om=tileMat.clone?.()||tileMat;om.side=THREE.DoubleSide;
+      const wall=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerWallPlan,tankFloorZ,tankTop),om,{x:0,y:0,z:0},null,'infinity-catch-wall-outer');
+      wall.userData.isWall=true;wall.userData.forceVerticalUV=true;wall.userData.isInfinityTankGroundFixed=true;wall.userData.infinityTankBaseZ=elevation;
+    }
+
+    const outerCapPlan=stripPolygon(copingInner,copingOuter);
+    if(outerCapPlan.length>=4){
+      const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;
+      const cap=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerCapPlan,tankTop,tankTop+copingH),cm,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
+      cap.userData.isCoping=true;cap.userData.isInfinityTankGroundFixed=true;cap.userData.infinityTankBaseZ=elevation;
+    }
+
+    const sheetPlan=stripPolygon(poolOuter,sheetOuter);
+    if(sheetPlan.length>=4){
+      const sh=createPoolWater(this._createPlanPrismGeometry(sheetPlan,tankTop,loweredTop));
+      sh.name='infinity-water-sheet';sh.userData.isInfinitySpillover=true;group.add(sh);waterMeshes.push(sh);
+    }
+
+    // End walls use the same exact offset endpoints as the floor and outer wall.
+    const endDefs=[
+      {i:0,sign:-1,name:'a'},
+      {i:centre.length-1,sign:1,name:'b'}
+    ];
+    for(const def of endDefs){
+      const i=def.i;
+      const tangent=(i===0?centre[1].clone().sub(centre[0]):centre[i].clone().sub(centre[i-1])).normalize();
+      const shift=tangent.clone().multiplyScalar(def.sign*wallT);
+      const base=poolOuter[i].clone(),far=tankOuterFace[i].clone();
+      const plan=[base,far,far.clone().add(shift),base.clone().add(shift)];
+      const sm=tileMat.clone?.()||tileMat;sm.side=THREE.DoubleSide;
+      const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankFloorZ,tankTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${def.name}`);
+      sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation;
+      const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankTop,tankTop+copingH),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
+      cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation;
+    }
+
+    // Trim the ground to the complete tank footprint, including all multi-wall corners.
+    const ground=this.ground||this.scene?.userData?.ground;
+    if(ground&&poolOuter.length>=2&&tankOuterFace.length>=2){
+      const groundPolygon=[...poolOuter.map(p=>p.clone()),...tankOuterFace.slice().reverse().map(p=>p.clone())];
+      const existing=Array.isArray(ground.userData.extraGroundVoids)?ground.userData.extraGroundVoids.filter(e=>e?.name!=='infinity-catch-tank'):[];
+      ground.userData.extraGroundVoids=[...existing,{name:'infinity-catch-tank',points:groundPolygon}];
+    }
+
+    if(!Array.isArray(this.poolGroup?.userData?.animatables))this.poolGroup.userData.animatables=[];
+    this.poolGroup.userData.animatables.push(...waterMeshes);
   }
 
   setupDimensionHandles() {
