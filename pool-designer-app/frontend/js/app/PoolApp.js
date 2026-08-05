@@ -649,20 +649,63 @@ export class PoolApp {
       }
     });
 
-    const rect=(a,b,inset,outset)=>{
-      const t=b.clone().sub(a).normalize(),out=new THREE.Vector2(t.y,-t.x);
-      return [a.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,outset),a.clone().addScaledVector(out,outset)];
+    // Build every replacement pool-wall/coping piece from the same offset-path
+    // vertices. At an L-shape corner the two adjoining pieces therefore share one
+    // exact mitered vertex, matching the authored pool instead of two independent
+    // rectangular boxes that leave a notch or overlap.
+    const lineIntersection2D=(p1,d1,p2,d2)=>{
+      const cross=d1.x*d2.y-d1.y*d2.x;
+      if(Math.abs(cross)<1e-9)return null;
+      const q=p2.clone().sub(p1);
+      const t=(q.x*d2.y-q.y*d2.x)/cross;
+      return p1.clone().addScaledVector(d1,t);
     };
+    const isPathVertex=(distance)=>{
+      const d=((distance%path.total)+path.total)%path.total;
+      return path.segments.findIndex(seg=>Math.abs(d-seg.start)<1e-7)>=0;
+    };
+    const offsetPointOnClosedPath=(distance,offset)=>{
+      const d=((distance%path.total)+path.total)%path.total;
+      const hit=this._pointOnLPath(d);
+      const vertexIndex=path.segments.findIndex(seg=>Math.abs(d-seg.start)<1e-7);
+      if(vertexIndex<0){
+        const tangent=hit.segment.b.clone().sub(hit.segment.a).normalize();
+        const outward=new THREE.Vector2(tangent.y,-tangent.x);
+        return hit.point.clone().addScaledVector(outward,offset);
+      }
+      const prev=path.segments[(vertexIndex-1+path.segments.length)%path.segments.length];
+      const next=path.segments[vertexIndex];
+      const tPrev=prev.b.clone().sub(prev.a).normalize();
+      const tNext=next.b.clone().sub(next.a).normalize();
+      const nPrev=new THREE.Vector2(tPrev.y,-tPrev.x);
+      const nNext=new THREE.Vector2(tNext.y,-tNext.x);
+      const base=next.a.clone();
+      const a=base.clone().addScaledVector(nPrev,offset);
+      const b=base.clone().addScaledVector(nNext,offset);
+      const miter=lineIntersection2D(a,tPrev,b,tNext);
+      if(miter&&miter.distanceTo(base)<=Math.max(1.0,Math.abs(offset)*6))return miter;
+      const bisector=nPrev.clone().add(nNext);
+      if(bisector.lengthSq()<1e-10)return a;
+      bisector.normalize();
+      const denom=Math.max(0.15,Math.abs(bisector.dot(nNext)));
+      return base.clone().addScaledVector(bisector,offset/denom);
+    };
+    const splitPiecePlan=(pc,inset,outset)=>[
+      offsetPointOnClosedPath(pc.d0,inset),
+      offsetPointOnClosedPath(pc.d1,inset),
+      offsetPointOnClosedPath(pc.d1,outset),
+      offsetPointOnClosedPath(pc.d0,outset)
+    ];
 
     for(const pc of pieces){
       if(pc.p0.distanceTo(pc.p1)<0.01)continue;
-      const wallPlan=rect(pc.p0,pc.p1,-wallT*0.5,wallT*0.5);
+      const wallPlan=splitPiecePlan(pc,-wallT*0.5,wallT*0.5);
       const top=pc.selected?loweredTop:0;
       const wm=tileMat.clone?.()||tileMat;wm.side=THREE.DoubleSide;
       const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,-depth,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall');
       w.userData.isWall=true;w.userData.forceVerticalUV=true;
       if(!pc.selected){
-        const capPlan=rect(pc.p0,pc.p1,-copingW*0.5,copingW*0.5);
+        const capPlan=splitPiecePlan(pc,-copingW*0.5,copingW*0.5);
         const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;
         const c=this._addFeatureMesh(group,this._createPlanPrismGeometry(capPlan,0,copingH),cm,{x:0,y:0,z:0},null,'infinity-l-remaining-coping');
         c.userData.isCoping=true;
