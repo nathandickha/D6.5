@@ -259,6 +259,9 @@ export class PoolApp {
     // shared by the coping cut, lowered wall, overflow water and catch tank.
     this.ovalInfinityArc = null;
     this.ovalInfinityHandles = { meshes: {}, drag: null, raycaster: null, mouse: null };
+    // L-shape infinity controls use continuous distance around the ordered wall perimeter.
+    this.lInfinityRange = null;
+    this.lInfinityHandles = { meshes: {}, drag: null, raycaster: null, mouse: null };
 
 
     // -----------------------------
@@ -520,6 +523,7 @@ export class PoolApp {
       this.rebuildPoolFeatures();
     }
     this._updateOvalInfinityHandles();
+    this._updateLInfinityHandles?.();
   }
 
   _onOvalInfinityPointerUp() {
@@ -530,6 +534,132 @@ export class PoolApp {
     if (this.controls) this.controls.enabled = true;
     this.rebuildPoolFeatures();
     this._notifyDesignerStateChanged?.();
+  }
+
+
+  _getLInfinityPath() {
+    const length = Math.max(1.2, Number(this.poolParams?.length || 8));
+    const width = Math.max(1.2, Number(this.poolParams?.width || 4));
+    const fracL = THREE.MathUtils.clamp(Number(this.poolParams?.notchLength ?? this.poolParams?.notchLengthX ?? 0.4), 0.08, 0.92);
+    const fracW = THREE.MathUtils.clamp(Number(this.poolParams?.notchWidth ?? this.poolParams?.notchWidthY ?? 0.5), 0.08, 0.92);
+    const notchL = THREE.MathUtils.clamp(length * fracL, 0.6, Math.max(0.6, length - 0.6));
+    const notchW = THREE.MathUtils.clamp(width * fracW, 0.6, Math.max(0.6, width - 0.6));
+    const hx=length*0.5, hy=width*0.5;
+    const points=[
+      new THREE.Vector2(-hx,-hy), new THREE.Vector2(hx,-hy), new THREE.Vector2(hx,hy),
+      new THREE.Vector2(hx-notchL,hy), new THREE.Vector2(hx-notchL,hy-notchW), new THREE.Vector2(-hx,hy-notchW)
+    ];
+    const segments=[]; let total=0;
+    for(let i=0;i<points.length;i++){
+      const a=points[i], b=points[(i+1)%points.length], len=a.distanceTo(b);
+      segments.push({a:a.clone(),b:b.clone(),length:len,start:total,end:total+len,index:i}); total+=len;
+    }
+    return {points,segments,total};
+  }
+
+  _getLInfinityRange() {
+    const path=this._getLInfinityPath();
+    const previous=this.lInfinityRange;
+    if(!previous || Math.abs((previous.total||0)-path.total)>0.01){
+      const extent=Math.min(path.total*0.35, Math.max(1, path.total*0.20));
+      this.lInfinityRange={start:0,end:extent,total:path.total};
+    }
+    this.lInfinityRange.total=path.total;
+    return this.lInfinityRange;
+  }
+
+  _pointOnLPath(distance) {
+    const path=this._getLInfinityPath();
+    let d=((Number(distance)||0)%path.total+path.total)%path.total;
+    for(const seg of path.segments){ if(d<=seg.end+1e-8){ const t=seg.length?THREE.MathUtils.clamp((d-seg.start)/seg.length,0,1):0; return {point:seg.a.clone().lerp(seg.b,t),segment:seg,t,distance:d}; } }
+    const seg=path.segments[path.segments.length-1]; return {point:seg.b.clone(),segment:seg,t:1,distance:d};
+  }
+
+  _nearestDistanceOnLPath(point) {
+    const path=this._getLInfinityPath(); let best=null;
+    for(const seg of path.segments){
+      const ab=seg.b.clone().sub(seg.a); const len2=ab.lengthSq();
+      const t=len2?THREE.MathUtils.clamp(point.clone().sub(seg.a).dot(ab)/len2,0,1):0;
+      const q=seg.a.clone().addScaledVector(ab,t); const dist=q.distanceToSquared(point);
+      if(!best||dist<best.dist) best={dist,distance:seg.start+seg.length*t};
+    }
+    return best?.distance ?? 0;
+  }
+
+  _lInfinitySweep(start,end,total){ let v=(end-start)%total; if(v<0)v+=total; return v; }
+
+  setupLInfinityHandles(){
+    if(this.lInfinityHandles?.meshes && Object.keys(this.lInfinityHandles.meshes).length) return;
+    if(!this.scene||!this.renderer) return;
+    const start=this._makeDimensionHandleMesh('lInfinityStart','↔'); const end=this._makeDimensionHandleMesh('lInfinityEnd','↔');
+    start.userData.lInfinityEnd='start'; end.userData.lInfinityEnd='end'; this.scene.add(start,end);
+    this.lInfinityHandles={meshes:{start,end},drag:null,raycaster:new THREE.Raycaster(),mouse:new THREE.Vector2()};
+    this._boundLInfinityPointerDown=e=>this._onLInfinityPointerDown(e); this._boundLInfinityPointerMove=e=>this._onLInfinityPointerMove(e); this._boundLInfinityPointerUp=()=>this._onLInfinityPointerUp();
+    this.renderer.domElement.addEventListener('pointerdown',this._boundLInfinityPointerDown);
+    window.addEventListener('pointermove',this._boundLInfinityPointerMove); window.addEventListener('pointerup',this._boundLInfinityPointerUp); window.addEventListener('pointercancel',this._boundLInfinityPointerUp);
+  }
+  _lInfinityHandleVisible(){ return !!(this.poolGroup && this.poolParams?.shape==='L' && this.poolParams?.raised && this.poolFeatures?.has('infinity-edge')); }
+  _updateLInfinityHandles(){
+    const meshes=this.lInfinityHandles?.meshes||{}, visible=this._lInfinityHandleVisible(); Object.values(meshes).forEach(m=>{if(m)m.visible=visible;}); if(!visible)return;
+    const range=this._getLInfinityRange(), z=this.getPoolElevation()-0.02;
+    const place=(mesh,d)=>{ const hit=this._pointOnLPath(d), tangent=hit.segment.b.clone().sub(hit.segment.a).normalize(); const outward=new THREE.Vector2(tangent.y,-tangent.x); const p=hit.point.clone().addScaledVector(outward,0.28); mesh.position.set(p.x,p.y,z); mesh.userData.handleAxisVector.set(tangent.x,tangent.y,0); this._orientDimensionHandleToCamera(mesh,mesh.position); };
+    place(meshes.start,range.start); place(meshes.end,range.end);
+  }
+  _onLInfinityPointerDown(event){
+    if(event.button!==0||!this._lInfinityHandleVisible())return; const state=this.lInfinityHandles, ndc=this._pointerToNDC(event); state.mouse.set(ndc.x,ndc.y); state.raycaster.setFromCamera(state.mouse,this.camera);
+    const hits=state.raycaster.intersectObjects(Object.values(state.meshes).filter(m=>m?.visible),false); if(!hits.length)return;
+    const handle=hits[0].object; event.preventDefault(); event.stopPropagation(); this.captureUndoState?.('Resize L-shape infinity edge'); state.drag={handle,end:handle.userData.lInfinityEnd}; if(this.controls)this.controls.enabled=false; this._setDimensionHandleActive(handle,true);
+  }
+  _onLInfinityPointerMove(event){
+    const drag=this.lInfinityHandles?.drag; if(!drag||!this.poolGroup)return; const p=this._screenToPlanePoint(event.clientX,event.clientY,this.getPoolElevation()); if(!p)return;
+    const path=this._getLInfinityPath(), range=this._getLInfinityRange(); let d=this._nearestDistanceOnLPath(new THREE.Vector2(p.x,p.y)); d=Math.round(d/0.1)*0.1;
+    const min=1.0,max=path.total*0.75;
+    if(drag.end==='start'){ let sw=this._lInfinitySweep(d,range.end,path.total); if(sw<min)d=range.end-min; else if(sw>max)d=range.end-max; range.start=((d%path.total)+path.total)%path.total; }
+    else { let sw=this._lInfinitySweep(range.start,d,path.total); if(sw<min)d=range.start+min; else if(sw>max)d=range.start+max; range.end=((d%path.total)+path.total)%path.total; }
+    const now=performance.now?performance.now():Date.now(); if(!this._lastLInfinityRebuild||now-this._lastLInfinityRebuild>45){this._lastLInfinityRebuild=now;this.rebuildPoolFeatures();} this._updateLInfinityHandles();
+  }
+  _onLInfinityPointerUp(){ const drag=this.lInfinityHandles?.drag;if(!drag)return;this._setDimensionHandleActive(drag.handle,false);this.lInfinityHandles.drag=null;if(this.controls)this.controls.enabled=true;this.rebuildPoolFeatures();this._notifyDesignerStateChanged?.(); }
+
+  _splitLPathByRange(){
+    const path=this._getLInfinityPath(), range=this._getLInfinityRange(), cuts=[range.start,range.end]; const pieces=[];
+    for(const seg of path.segments){
+      const local=[seg.start,seg.end,...cuts.filter(c=>c>seg.start+1e-8&&c<seg.end-1e-8)].sort((a,b)=>a-b);
+      for(let i=0;i<local.length-1;i++){ const d0=local[i],d1=local[i+1],mid=(d0+d1)/2; const p0=this._pointOnLPath(d0).point,p1=this._pointOnLPath(d1).point; const selected=this._lInfinitySweep(range.start,mid,path.total)<=this._lInfinitySweep(range.start,range.end,path.total)+1e-8; pieces.push({p0,p1,selected,d0,d1}); }
+    }
+    return {path,range,pieces};
+  }
+
+  _createLShapeInfinityEdge(group){
+    const {path,range,pieces}=this._splitLPathByRange(); const elevation=this.getPoolElevation(); const depth=Math.max(0.4,Number(this.poolParams?.deepDepth||this.poolParams?.depth||1.8));
+    const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10,tankFloorZ=-Math.max(depth,0.7),tankTop=-0.20,outerOffset=0.80;
+    const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
+    const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
+    const tileMat=(Array.isArray(tileSource)?tileSource[0]:tileSource)?.clone?.() || new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide});
+    const copingMat=(Array.isArray(copingSource)?copingSource[0]:copingSource)?.clone?.() || tileMat.clone();
+    // Hide authored L walls/coping and rebuild split pieces, allowing partial-wall openings.
+    this.poolGroup?.traverse?.(o=>{ if(o?.userData?.isWall||o?.userData?.isCoping){ if(o===group)return; if(!this._infinityHiddenCoping)this._infinityHiddenCoping=[]; if(!this._infinityHiddenCoping.includes(o))this._infinityHiddenCoping.push(o); o.visible=false; } });
+    const rect=(a,b,inset,outset)=>{ const t=b.clone().sub(a).normalize(), out=new THREE.Vector2(t.y,-t.x); return [a.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,inset),b.clone().addScaledVector(out,outset),a.clone().addScaledVector(out,outset)]; };
+    const selectedPieces=pieces.filter(x=>x.selected);
+    for(const pc of pieces){
+      if(pc.p0.distanceTo(pc.p1)<0.01)continue; const wallPlan=rect(pc.p0,pc.p1,-wallT*0.5,wallT*0.5); const top=pc.selected?loweredTop:0;
+      const wm=tileMat.clone?.()||tileMat; wm.side=THREE.DoubleSide; const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,-depth,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall'); w.userData.isWall=true;w.userData.forceVerticalUV=true;
+      if(!pc.selected){ const capPlan=rect(pc.p0,pc.p1,-copingW*0.5,copingW*0.5); const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide; const c=this._addFeatureMesh(group,this._createPlanPrismGeometry(capPlan,0, copingH),cm,{x:0,y:0,z:0},null,'infinity-l-remaining-coping');c.userData.isCoping=true; }
+    }
+    const waterMeshes=[]; const groundPts=[];
+    for(const pc of selectedPieces){
+      const t=pc.p1.clone().sub(pc.p0).normalize(), out=new THREE.Vector2(t.y,-t.x); const inner0=pc.p0.clone().addScaledVector(out,wallT*0.5),inner1=pc.p1.clone().addScaledVector(out,wallT*0.5); const outer0=pc.p0.clone().addScaledVector(out,outerOffset),outer1=pc.p1.clone().addScaledVector(out,outerOffset);
+      const overflowPlan=[pc.p0.clone().addScaledVector(out,-wallT*0.5),pc.p1.clone().addScaledVector(out,-wallT*0.5),inner1.clone(),inner0.clone()]; const ow=createPoolWater(this._createPlanPrismGeometry(overflowPlan,loweredTop+0.002,loweredTop+0.012));ow.name='infinity-horizontal-water';ow.userData.isInfinityWater=true;group.add(ow);waterMeshes.push(ow);
+      const floorPlan=[inner0,inner1,outer1,outer0]; const fm=tileMat.clone?.()||tileMat;fm.side=THREE.DoubleSide; const fl=this._addFeatureMesh(group,this._createPlanPrismGeometry(floorPlan,tankFloorZ,tankFloorZ+0.1),fm,{x:0,y:0,z:0},null,'infinity-catch-floor');fl.userData.isFloor=true;fl.userData.isInfinityTankGroundFixed=true;fl.userData.infinityTankBaseZ=elevation;
+      const water=createPoolWater(this._createPlanPrismGeometry(floorPlan,tankTop-0.01,tankTop));water.name='infinity-catch-water';water.userData.isInfinityWater=true;water.userData.isInfinityTankGroundFixed=true;water.userData.infinityTankBaseZ=elevation;group.add(water);waterMeshes.push(water);
+      const outerWallPlan=rect(outer0,outer1,0,wallT); const om=tileMat.clone?.()||tileMat;om.side=THREE.DoubleSide;const wall=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerWallPlan,tankFloorZ,tankTop),om,{x:0,y:0,z:0},null,'infinity-catch-wall-outer');wall.userData.isWall=true;wall.userData.forceVerticalUV=true;wall.userData.isInfinityTankGroundFixed=true;wall.userData.infinityTankBaseZ=elevation;
+      const outerCapPlan=rect(outer0,outer1,-0.025,wallT+0.025);const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;const cap=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerCapPlan,tankTop,tankTop+copingH),cm,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');cap.userData.isCoping=true;cap.userData.isInfinityTankGroundFixed=true;cap.userData.infinityTankBaseZ=elevation;
+      const sheetPlan=[inner0,inner1,inner1.clone().addScaledVector(out,0.01),inner0.clone().addScaledVector(out,0.01)]; const sh=createPoolWater(this._createPlanPrismGeometry(sheetPlan,tankTop,loweredTop));sh.name='infinity-water-sheet';sh.userData.isInfinitySpillover=true;group.add(sh);waterMeshes.push(sh);
+      groundPts.push(inner0,inner1,outer1,outer0);
+    }
+    // Close only the two overall range ends; intermediate corners share their vertices.
+    [range.start,range.end].forEach((d,index)=>{ const hit=this._pointOnLPath(d),t=hit.segment.b.clone().sub(hit.segment.a).normalize(),out=new THREE.Vector2(t.y,-t.x),base=hit.point.clone().addScaledVector(out,wallT*0.5),far=hit.point.clone().addScaledVector(out,outerOffset+wallT); const sideDir=t.clone().multiplyScalar(index?wallT:-wallT); const plan=[base,far,far.clone().add(sideDir),base.clone().add(sideDir)]; const sm=tileMat.clone?.()||tileMat;sm.side=THREE.DoubleSide;const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankFloorZ,tankTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${index?'b':'a'}`);sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation; const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankTop,tankTop+copingH),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${index?'b':'a'}`);cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation; });
+    const ground=this.ground||this.scene?.userData?.ground;if(ground&&groundPts.length){const existing=Array.isArray(ground.userData.extraGroundVoids)?ground.userData.extraGroundVoids.filter(e=>e?.name!=='infinity-catch-tank'):[];ground.userData.extraGroundVoids=[...existing,{name:'infinity-catch-tank',points:groundPts}];}
+    if(!Array.isArray(this.poolGroup?.userData?.animatables))this.poolGroup.userData.animatables=[];this.poolGroup.userData.animatables.push(...waterMeshes);
   }
 
   setupDimensionHandles() {
@@ -8160,6 +8290,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       this._createOvalInfinityEdge(group, length, width, side);
       return;
     }
+    if (this.poolParams?.shape === 'L') {
+      this._createLShapeInfinityEdge(group);
+      return;
+    }
     let frame = this._sideFrame(side, length, width, 0);
     let wallSpan = Math.max(0.6, frame.span);
 
@@ -8689,6 +8823,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (this.poolFeatures.has('blade-water-features')) this._createWaterFeatureWall(group,length,width,true);
     this.poolGroup.add(group); this.poolFeatureGroup = group;
     this._updateOvalInfinityHandles?.();
+    this._updateLInfinityHandles?.();
     try {
       updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
       this.applyPoolElevation?.();
@@ -8701,7 +8836,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const availability = this.getPoolFeatureAvailability();
     if (enabled && availability[feature] === false) return false;
     if (enabled) this.poolFeatures.add(feature); else this.poolFeatures.delete(feature);
-    this.rebuildPoolFeatures(); this._updateOvalInfinityHandles?.(); this._notifyDesignerStateChanged?.(); return true;
+    this.rebuildPoolFeatures(); this._updateOvalInfinityHandles?.(); this._updateLInfinityHandles?.(); this._notifyDesignerStateChanged?.(); return true;
   }
 
   // --------------------------------------------------------------
@@ -8955,6 +9090,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     this._updateDimensionHandles();
     this._updateOvalInfinityHandles();
+    this._updateLInfinityHandles?.();
     this._updateSpaDimensionHandles();
     this._updateSectionDimensionHandles();
     this.syncPoolRaisedControl();
@@ -9044,6 +9180,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
 
     this.setupDimensionHandles();
     this.setupOvalInfinityHandles();
+    this.setupLInfinityHandles();
     this.setupSpaDimensionHandles();
     this.setupSectionDimensionHandles();
     this.setupGlobalActionButtons();
@@ -10985,6 +11122,7 @@ animateObjectOnce(this.poolGroup?.userData?.waterMesh);
 
     this._updateDimensionHandles();
     this._updateOvalInfinityHandles();
+    this._updateLInfinityHandles?.();
     this._updateSpaDimensionHandles();
     this._updateSectionDimensionHandles();
     this.scene?.userData?.grassSystem?.update?.(this.camera);
