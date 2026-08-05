@@ -255,6 +255,11 @@ export class PoolApp {
     this.poolFeatures = new Set();
     this.poolFeatureGroup = null;
 
+    // Oval infinity-edge arc controls. Angles are stored in radians and are
+    // shared by the coping cut, lowered wall, overflow water and catch tank.
+    this.ovalInfinityArc = null;
+    this.ovalInfinityHandles = { meshes: {}, drag: null, raycaster: null, mouse: null };
+
 
     // -----------------------------
     // Live preview + debounced rebuild (performance)
@@ -384,6 +389,147 @@ export class PoolApp {
     const pixelsPerWorld = Math.hypot(dx, dy);
     if (pixelsPerWorld < 0.001) return null;
     return { x: dx / pixelsPerWorld, y: dy / pixelsPerWorld, pixelsPerWorld };
+  }
+
+
+  _normaliseAngle(angle) {
+    const twoPi = Math.PI * 2;
+    let value = Number(angle) % twoPi;
+    if (value < 0) value += twoPi;
+    return value;
+  }
+
+  _positiveAngleSweep(start, end) {
+    return this._normaliseAngle(end - start);
+  }
+
+  _getOvalInfinityArc(side) {
+    const canonicalSide = ({ east:'right', west:'left', north:'back', south:'front' })[side] || side;
+    const centerAngle = canonicalSide === 'right' ? 0
+      : canonicalSide === 'back' ? Math.PI * 0.5
+      : canonicalSide === 'left' ? Math.PI
+      : -Math.PI * 0.5;
+    const previous = this.ovalInfinityArc;
+    if (!previous || Math.abs(this._normaliseAngle(previous.centerAngle - centerAngle)) > 0.001) {
+      this.ovalInfinityArc = {
+        centerAngle,
+        startAngle: centerAngle - Math.PI * 0.25,
+        endAngle: centerAngle + Math.PI * 0.25
+      };
+    }
+    return this.ovalInfinityArc;
+  }
+
+  setupOvalInfinityHandles() {
+    if (this.ovalInfinityHandles?.meshes && Object.keys(this.ovalInfinityHandles.meshes).length) return;
+    if (!this.scene || !this.renderer) return;
+    const start = this._makeDimensionHandleMesh('ovalInfinityStart', '↔');
+    const end = this._makeDimensionHandleMesh('ovalInfinityEnd', '↔');
+    start.userData.infinityArcEnd = 'start';
+    end.userData.infinityArcEnd = 'end';
+    start.userData.handleAxisVector = new THREE.Vector3(1, 0, 0);
+    end.userData.handleAxisVector = new THREE.Vector3(1, 0, 0);
+    this.scene.add(start, end);
+    this.ovalInfinityHandles = {
+      meshes: { start, end }, drag: null,
+      raycaster: new THREE.Raycaster(), mouse: new THREE.Vector2()
+    };
+    this._boundOvalInfinityPointerDown = (event) => this._onOvalInfinityPointerDown(event);
+    this._boundOvalInfinityPointerMove = (event) => this._onOvalInfinityPointerMove(event);
+    this._boundOvalInfinityPointerUp = () => this._onOvalInfinityPointerUp();
+    this.renderer.domElement.addEventListener('pointerdown', this._boundOvalInfinityPointerDown);
+    window.addEventListener('pointermove', this._boundOvalInfinityPointerMove);
+    window.addEventListener('pointerup', this._boundOvalInfinityPointerUp);
+    window.addEventListener('pointercancel', this._boundOvalInfinityPointerUp);
+  }
+
+  _ovalInfinityHandleVisible() {
+    return !!(this.poolGroup && this.poolParams?.shape === 'oval' && this.poolParams?.raised && this.poolFeatures?.has('infinity-edge'));
+  }
+
+  _updateOvalInfinityHandles() {
+    const handles = this.ovalInfinityHandles?.meshes || {};
+    const visible = this._ovalInfinityHandleVisible();
+    Object.values(handles).forEach((mesh) => { if (mesh) mesh.visible = visible; });
+    if (!visible) return;
+    const entry = this._getEntryStepInfo(Number(this.poolParams.length || 8), Number(this.poolParams.width || 4));
+    const side = this._oppositeSide(entry.side);
+    const arcState = this._getOvalInfinityArc(side);
+    const a = Math.max(0.3, Number(this.poolParams.length || 8) * 0.5);
+    const b = Math.max(0.3, Number(this.poolParams.width || 4) * 0.5);
+    const wallThickness = 0.20;
+    const elevation = this.getPoolElevation();
+    const z = elevation - 0.10 + 0.08;
+    const place = (mesh, angle) => {
+      const boundary = new THREE.Vector2(a * Math.cos(angle), b * Math.sin(angle));
+      const normal = new THREE.Vector2(Math.cos(angle) / a, Math.sin(angle) / b).normalize();
+      const point = boundary.addScaledVector(normal, wallThickness + 0.03);
+      mesh.position.set(point.x, point.y, z);
+      const tangent = new THREE.Vector3(-a * Math.sin(angle), b * Math.cos(angle), 0).normalize();
+      mesh.userData.handleAxisVector.copy(tangent);
+      this._orientDimensionHandleToCamera(mesh, mesh.position);
+    };
+    place(handles.start, arcState.startAngle);
+    place(handles.end, arcState.endAngle);
+  }
+
+  _onOvalInfinityPointerDown(event) {
+    if (event.button !== 0 || !this._ovalInfinityHandleVisible()) return;
+    const state = this.ovalInfinityHandles;
+    const ndc = this._pointerToNDC(event);
+    state.mouse.set(ndc.x, ndc.y);
+    state.raycaster.setFromCamera(state.mouse, this.camera);
+    const hits = state.raycaster.intersectObjects(Object.values(state.meshes).filter(m => m?.visible), false);
+    if (!hits.length) return;
+    const handle = hits[0].object;
+    event.preventDefault(); event.stopPropagation();
+    this.captureUndoState?.('Resize oval infinity edge');
+    state.drag = { handle, end: handle.userData.infinityArcEnd };
+    this.controls && (this.controls.enabled = false);
+    this._setDimensionHandleActive(handle, true);
+  }
+
+  _onOvalInfinityPointerMove(event) {
+    const drag = this.ovalInfinityHandles?.drag;
+    if (!drag || !this.poolGroup) return;
+    const point = this._screenToPlanePoint(event.clientX, event.clientY, this.getPoolElevation());
+    if (!point) return;
+    const a = Math.max(0.3, Number(this.poolParams.length || 8) * 0.5);
+    const b = Math.max(0.3, Number(this.poolParams.width || 4) * 0.5);
+    let angle = Math.atan2(point.y / b, point.x / a);
+    const snap = THREE.MathUtils.degToRad(5);
+    angle = Math.round(angle / snap) * snap;
+    const arc = this.ovalInfinityArc;
+    if (!arc) return;
+    const minSweep = THREE.MathUtils.degToRad(30);
+    const maxSweep = THREE.MathUtils.degToRad(270);
+    if (drag.end === 'start') {
+      const proposedSweep = this._positiveAngleSweep(angle, arc.endAngle);
+      if (proposedSweep < minSweep) angle = arc.endAngle - minSweep;
+      else if (proposedSweep > maxSweep) angle = arc.endAngle - maxSweep;
+      arc.startAngle = angle;
+    } else {
+      const proposedSweep = this._positiveAngleSweep(arc.startAngle, angle);
+      if (proposedSweep < minSweep) angle = arc.startAngle + minSweep;
+      else if (proposedSweep > maxSweep) angle = arc.startAngle + maxSweep;
+      arc.endAngle = angle;
+    }
+    const now = performance.now ? performance.now() : Date.now();
+    if (!this._lastOvalInfinityRebuild || now - this._lastOvalInfinityRebuild > 45) {
+      this._lastOvalInfinityRebuild = now;
+      this.rebuildPoolFeatures();
+    }
+    this._updateOvalInfinityHandles();
+  }
+
+  _onOvalInfinityPointerUp() {
+    const drag = this.ovalInfinityHandles?.drag;
+    if (!drag) return;
+    this._setDimensionHandleActive(drag.handle, false);
+    this.ovalInfinityHandles.drag = null;
+    if (this.controls) this.controls.enabled = true;
+    this.rebuildPoolFeatures();
+    this._notifyDesignerStateChanged?.();
   }
 
   setupDimensionHandles() {
@@ -7699,7 +7845,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       : canonicalSide === 'back' ? Math.PI * 0.5
       : canonicalSide === 'left' ? Math.PI
       : -Math.PI * 0.5;
-    const halfArc = Math.PI * 0.25;
+    const arcState = this._getOvalInfinityArc(canonicalSide);
+    const startAngle = arcState.startAngle;
+    const endAngle = arcState.endAngle;
+    const sweep = this._positiveAngleSweep(startAngle, endAngle);
+    const halfArc = sweep * 0.5;
     const a = Math.max(0.3, length * 0.5), b = Math.max(0.3, width * 0.5);
 
     // The authored oval wall and coping are each single continuous meshes. Hide
@@ -7715,7 +7865,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       coping.visible = false;
       if (!this._infinityHiddenCoping.includes(coping)) this._infinityHiddenCoping.push(coping);
     }
-    return { centerAngle, halfArc, a, b, coping, wall };
+    return { centerAngle, halfArc, startAngle, endAngle, sweep, a, b, coping, wall };
   }
 
   _createOvalInfinityEdge(group, length, width, side) {
@@ -7745,13 +7895,13 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       return { inner, outer };
     };
     const remainingWallArc = makeArcPoints(
-      arc.centerAngle + arc.halfArc,
-      Math.PI * 2 - arc.halfArc * 2,
+      arc.endAngle,
+      Math.PI * 2 - arc.sweep,
       144
     );
     const spillwayWallArc = makeArcPoints(
-      arc.centerAngle - arc.halfArc,
-      arc.halfArc * 2,
+      arc.startAngle,
+      arc.sweep,
       48
     );
     const remainingWall = this._addFeatureMesh(
@@ -7778,8 +7928,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const copingSegments = 144;
     const copingInnerPts = [];
     const copingOuterPts = [];
-    const copingStart = arc.centerAngle + arc.halfArc;
-    const copingSweep = Math.PI * 2 - arc.halfArc * 2;
+    const copingStart = arc.endAngle;
+    const copingSweep = Math.PI * 2 - arc.sweep;
     for (let i = 0; i <= copingSegments; i += 1) {
       const t = copingStart + copingSweep * (i / copingSegments);
       const boundary = new THREE.Vector2(arc.a * Math.cos(t), arc.b * Math.sin(t));
@@ -7825,24 +7975,20 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const segments = 48;
     const innerWallPts=[], outerWallPts=[];
     for (let i=0;i<=segments;i++) {
-      const t = arc.centerAngle - arc.halfArc + (arc.halfArc*2*i/segments);
+      const t = arc.startAngle + (arc.sweep * i / segments);
       const p = new THREE.Vector2(arc.a*Math.cos(t), arc.b*Math.sin(t));
       const n = new THREE.Vector2(Math.cos(t)/arc.a, Math.sin(t)/arc.b).normalize();
       innerWallPts.push(p.clone());
       outerWallPts.push(p.clone().addScaledVector(n, wallThickness));
     }
 
-    // Keep the original 720 mm clear tank width. Extend only its length by
-    // 300 mm beyond each end of the 90-degree spillway arc. Convert the desired
-    // physical extension to an angular offset using the ellipse tangent speed
-    // at each spillway endpoint.
-    const spillwayStart = arc.centerAngle - arc.halfArc;
-    const spillwayEnd = arc.centerAngle + arc.halfArc;
-    const ellipseSpeed = (t) => Math.hypot(arc.a * Math.sin(t), arc.b * Math.cos(t));
-    const startExtensionAngle = 0.30 / Math.max(0.001, ellipseSpeed(spillwayStart));
-    const endExtensionAngle = 0.30 / Math.max(0.001, ellipseSpeed(spillwayEnd));
-    const tankStart = spillwayStart - startExtensionAngle;
-    const tankEnd = spillwayEnd + endExtensionAngle;
+    // Use the same draggable angular endpoints for the catch tank and the
+    // spillway. This single source of truth keeps every side wall, coping end,
+    // water surface and ground void aligned while either handle is moved.
+    const spillwayStart = arc.startAngle;
+    const spillwayEnd = arc.startAngle + arc.sweep;
+    const tankStart = spillwayStart;
+    const tankEnd = spillwayEnd;
     const tankSegments = 64;
     const tankInnerPts=[], tankOuterPts=[];
     for (let i=0;i<=tankSegments;i++) {
@@ -8542,6 +8688,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     if (this.poolFeatures.has('spout-water-features')) this._createWaterFeatureWall(group,length,width,false);
     if (this.poolFeatures.has('blade-water-features')) this._createWaterFeatureWall(group,length,width,true);
     this.poolGroup.add(group); this.poolFeatureGroup = group;
+    this._updateOvalInfinityHandles?.();
     try {
       updateGroundVoid(this.ground || this.scene?.userData?.ground, this.poolGroup, this.spa);
       this.applyPoolElevation?.();
@@ -8554,7 +8701,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const availability = this.getPoolFeatureAvailability();
     if (enabled && availability[feature] === false) return false;
     if (enabled) this.poolFeatures.add(feature); else this.poolFeatures.delete(feature);
-    this.rebuildPoolFeatures(); this._notifyDesignerStateChanged?.(); return true;
+    this.rebuildPoolFeatures(); this._updateOvalInfinityHandles?.(); this._notifyDesignerStateChanged?.(); return true;
   }
 
   // --------------------------------------------------------------
@@ -8807,6 +8954,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     }
 
     this._updateDimensionHandles();
+    this._updateOvalInfinityHandles();
     this._updateSpaDimensionHandles();
     this._updateSectionDimensionHandles();
     this.syncPoolRaisedControl();
@@ -8895,6 +9043,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this.clock = new THREE.Clock();
 
     this.setupDimensionHandles();
+    this.setupOvalInfinityHandles();
     this.setupSpaDimensionHandles();
     this.setupSectionDimensionHandles();
     this.setupGlobalActionButtons();
@@ -10835,6 +10984,7 @@ animateObjectOnce(this.poolGroup?.userData?.waterMesh);
     }
 
     this._updateDimensionHandles();
+    this._updateOvalInfinityHandles();
     this._updateSpaDimensionHandles();
     this._updateSectionDimensionHandles();
     this.scene?.userData?.grassSystem?.update?.(this.camera);
