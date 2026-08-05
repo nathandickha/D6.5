@@ -7782,15 +7782,13 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     }
     const groundZ = this._getGroundTopLocalZ();
     const elevation = this.getPoolElevation();
-    const tankClear = 0.72, tankWall = 0.20, tankDepth = 0.55, copingWidth = 0.25;
-    // Keep the existing visible tank-water band, but bring the outer tank wall
-    // inward so it sits only 50 mm beyond the water rather than leaving a wide
-    // tiled shelf. Offsets are measured outward from the pool boundary.
-    const waterInnerOffset = wallThickness + tankWall;
-    const waterOuterOffset = wallThickness + tankClear;
-    const outerWallClearance = 0.05;
-    const tankOuterOffset = waterOuterOffset + outerWallClearance;
-    const tankOverallWidth = tankOuterOffset - wallThickness;
+    const tankWall = 0.20, tankDepth = 0.55, copingWidth = 0.25;
+    // Position the curved outer tank wall exactly 600 mm beyond the outside
+    // face of the pool wall. Offsets are measured from the oval pool boundary,
+    // so adding wallThickness first moves to the pool wall's outside face.
+    const tankClearWidth = 0.60;
+    const tankOuterOffset = wallThickness + tankClearWidth;
+    const tankOverallWidth = tankClearWidth;
     const tankTop = groundZ - 0.005;
     const tankFloorZ = tankTop - tankDepth;
     const segments = 48;
@@ -7833,17 +7831,11 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const outerWall = this._addFeatureMesh(group, this._createIndexedVerticalArcGeometry(tankOuterPts,tankFloorZ,tankTop), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-wall-outer');
     outerWall.userData.isWall=true; outerWall.userData.isInfinityTankGroundFixed=true; outerWall.userData.infinityTankBaseZ=elevation;
 
-    // Preserve the water width from the previous version while tightening only
-    // the outer wall. This keeps the water's pool-side and outer edges stable.
-    const waterInner = [];
-    const waterOuter = [];
-    for (let i = 0; i <= tankSegments; i += 1) {
-      const t = tankStart + ((tankEnd - tankStart) * i / tankSegments);
-      const p = new THREE.Vector2(arc.a * Math.cos(t), arc.b * Math.sin(t));
-      const n = new THREE.Vector2(Math.cos(t) / arc.a, Math.sin(t) / arc.b).normalize();
-      waterInner.push(p.clone().addScaledVector(n, waterInnerOffset));
-      waterOuter.push(p.clone().addScaledVector(n, waterOuterOffset));
-    }
+    // Fill the tank water to all enclosing surfaces. Reuse the exact tank
+    // boundary vertices so the water meets the pool-side wall, curved outer
+    // wall and both radial end walls without visible radial or end gaps.
+    const waterInner = tankInnerPts.map((point) => point.clone());
+    const waterOuter = tankOuterPts.map((point) => point.clone());
     const catchWater = createPoolWater(this._createIndexedArcStripGeometry(waterInner,waterOuter,0));
     catchWater.name='infinity-catch-water'; catchWater.position.z=tankTop-0.105; catchWater.userData.isInfinityWater=true; catchWater.userData.isInfinityTankGroundFixed=true; catchWater.userData.infinityTankBaseZ=catchWater.position.z+elevation; catchWater.frustumCulled=false; group.add(catchWater);
 
