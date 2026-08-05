@@ -633,7 +633,7 @@ export class PoolApp {
     const {path,range,pieces}=this._splitLPathByRange();
     const elevation=this.getPoolElevation();
     const depth=Math.max(0.4,Number(this.poolParams?.deepDepth||this.poolParams?.depth||1.8));
-    const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10,tankFloorZ=-Math.max(depth,0.7),tankWallTop=-copingH,tankWaterTop=-0.20,outerOffset=0.80,poolWallExtension=0.30;
+    const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10,groundPlaneZ=0,tankFloorZ=-Math.max(depth,0.7),tankWallTop=groundPlaneZ-copingH,tankWaterTop=groundPlaneZ-0.20,outerOffset=0.80,poolWallExtension=0.30;
     const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
     const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
     const tileMat=(Array.isArray(tileSource)?tileSource[0]:tileSource)?.clone?.() || new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide});
@@ -819,11 +819,34 @@ export class PoolApp {
       const outward=far.clone().sub(base).normalize();
       const extensionEnd=base.clone().addScaledVector(outward,poolWallExtension);
 
+      // Build the extension from the actual 200 mm pool-wall footprint. Its top
+      // remains attached to the pool, while its bottom is pinned to the fixed
+      // tank floor by applyPoolElevation().
       const extensionPlan=[base,extensionEnd,extensionEnd.clone().add(shift),base.clone().add(shift)];
+      const extensionGeometry=this._createPlanPrismGeometry(extensionPlan,tankFloorZ-elevation,0);
       const em=tileMat.clone?.()||tileMat;em.side=THREE.DoubleSide;
-      const extension=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,tankFloorZ-elevation,0),em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
-      extension.userData.isWall=true;extension.userData.forceVerticalUV=true;
-      const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,0,copingH),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
+      const extension=this._addFeatureMesh(group,extensionGeometry,em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
+      extension.userData.isWall=true;
+      extension.userData.forceVerticalUV=true;
+      extension.userData.isInfinityPoolWallExtension=true;
+      extension.userData.infinityPoolWallBottomFixedZ=tankFloorZ;
+      if(extensionGeometry?.attributes?.position){
+        const pos=extensionGeometry.attributes.position;
+        let minZ=Infinity;
+        for(let vi=0;vi<pos.count;vi++)minZ=Math.min(minZ,pos.getZ(vi));
+        extension.userData.infinityPoolWallBottomVertexIndices=[];
+        for(let vi=0;vi<pos.count;vi++){
+          if(Math.abs(pos.getZ(vi)-minZ)<1e-6)extension.userData.infinityPoolWallBottomVertexIndices.push(vi);
+        }
+      }
+
+      // Use the same 250 mm coping width as the pool coping, centred over the
+      // 200 mm extension wall (25 mm overhang each side).
+      const capShift=tangent.clone().multiplyScalar(def.sign*copingW);
+      const capBase=base.clone().addScaledVector(outward,-0.025);
+      const capEnd=extensionEnd.clone().addScaledVector(outward,0.025);
+      const extensionCapPlan=[capBase,capEnd,capEnd.clone().add(capShift),capBase.clone().add(capShift)];
+      const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionCapPlan,0,copingH),copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
       extensionCap.userData.isCoping=true;
 
       const plan=[extensionEnd,far,far.clone().add(shift),extensionEnd.clone().add(shift)];
