@@ -7542,6 +7542,37 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     return geometry;
   }
 
+  _createPlanPrismGeometry(points, bottomZ, topZ, uvScale = this.tileSize || 0.3) {
+    if (!Array.isArray(points) || points.length < 3) return new THREE.BufferGeometry();
+    const shape = new THREE.Shape();
+    shape.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) shape.lineTo(points[i].x, points[i].y);
+    shape.closePath();
+    const geometry = new THREE.ExtrudeGeometry(shape, {
+      depth: Math.max(0.001, topZ - bottomZ),
+      bevelEnabled: false,
+      steps: 1,
+      curveSegments: 1
+    });
+    geometry.translate(0, 0, bottomZ);
+    const pos = geometry.attributes.position;
+    const normal = geometry.attributes.normal;
+    const tile = Math.max(0.05, Number(uvScale) || 0.3);
+    const uvs = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i += 1) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const nx = Math.abs(normal.getX(i)), ny = Math.abs(normal.getY(i)), nz = Math.abs(normal.getZ(i));
+      let u, v;
+      if (nz >= nx && nz >= ny) { u = x / tile; v = y / tile; }
+      else if (ny >= nx) { u = x / tile; v = z / tile; }
+      else { u = y / tile; v = z / tile; }
+      uvs[i * 2] = u; uvs[i * 2 + 1] = v;
+    }
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
   _createIndexedArcStripGeometry(innerPts, outerPts, z, thickness = 0) {
     const n = Math.min(innerPts.length, outerPts.length);
     if (n < 2) return new THREE.BufferGeometry();
@@ -7825,7 +7856,8 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const overflow = createPoolWater(this._createIndexedArcStripGeometry(innerWallPts, outerWallPts, 0));
     overflow.name='infinity-horizontal-water'; overflow.position.z=poolWaterZ; overflow.userData.isInfinityWater=true; overflow.frustumCulled=false; group.add(overflow);
 
-    const floor = this._addFeatureMesh(group, this._createIndexedArcStripGeometry(tankInnerPts,tankOuterPts,tankFloorZ,0.10), tiled.clone(), {x:0,y:0,z:0}, null, 'infinity-catch-floor');
+    const floorMaterial = tiled.clone(); floorMaterial.side = THREE.DoubleSide; floorMaterial.needsUpdate = true;
+    const floor = this._addFeatureMesh(group, this._createIndexedArcStripGeometry(tankInnerPts,tankOuterPts,tankFloorZ,0.10), floorMaterial, {x:0,y:0,z:0}, null, 'infinity-catch-floor');
     floor.userData.isFloor=true; floor.userData.isInfinityTankGroundFixed=true; floor.userData.infinityTankBaseZ=elevation;
 
     // Build the curved outer tank wall as a complete 200 mm-thick wall, not a
@@ -7890,56 +7922,73 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // no raised-pool wall extensions over the tank ends; both end walls and
     // their coping remain fixed with the catch tank from the pool wall through
     // to the widened outer tank wall.
-    const tankSideWallCenterZ = tankTop - tankDepth * 0.5;
+    // Build each radial end wall from the exact shared tank boundary line.
+    // The wall occupies the outside of the tank arc, so its inner face is
+    // coincident with the water/end boundary and its outer edge meets the
+    // curved outer wall without a box-geometry half-thickness overshoot.
     const spillwayEndPairs = [
-      [tankInnerPts[0], tankOuterFacePts[0]],
-      [tankInnerPts[tankInnerPts.length - 1], tankOuterFacePts[tankOuterFacePts.length - 1]]
+      [tankInnerPts[0], tankOuterFacePts[0], tankStart, -1],
+      [tankInnerPts[tankInnerPts.length - 1], tankOuterFacePts[tankOuterFacePts.length - 1], tankEnd, 1]
     ];
-    spillwayEndPairs.forEach((pair, index) => {
-      const [start, end] = pair;
-      const radial = end.clone().sub(start);
-      const tankWallRun = radial.length();
-      if (tankWallRun <= 1e-4) return;
-      const radialDir = radial.clone().normalize();
-      const angle = Math.atan2(radialDir.y, radialDir.x);
-      const tankMid = start.clone().addScaledVector(radialDir, tankWallRun * 0.5);
+    spillwayEndPairs.forEach((entry, index) => {
+      const [innerPoint, outerPoint, angleAtEnd, directionSign] = entry;
+      const tangent = new THREE.Vector2(
+        -arc.a * Math.sin(angleAtEnd),
+        arc.b * Math.cos(angleAtEnd)
+      ).normalize().multiplyScalar(directionSign * tankWall);
 
-      // Build both radial end walls from the actual first/last tank boundary
-      // points. Using array endpoints avoids the far end disappearing when the
-      // arc segment count or extension angle changes.
-      // Stop the radial side wall exactly at the curved outer wall's outside
-      // face. The previous extra `+ tankWall` made each side wall project past
-      // the tank boundary by 200 mm.
-      const sideWallGeometry = this._applyMeterUVsToBoxGeometry(
-        new THREE.BoxGeometry(tankWallRun, tankWall, tankDepth)
-      );
+      // Exact junction polygon: the first radial edge is the tank/water end;
+      // the translated radial edge lies outside the tank. The curved outer-wall
+      // endpoint is therefore shared exactly rather than approximated by a box.
+      const wallPlan = [
+        innerPoint.clone(),
+        outerPoint.clone(),
+        outerPoint.clone().add(tangent),
+        innerPoint.clone().add(tangent)
+      ];
+      const sideWallMaterial = tiled.clone();
+      sideWallMaterial.side = THREE.DoubleSide;
+      sideWallMaterial.needsUpdate = true;
       const sideWall = this._addFeatureMesh(
         group,
-        sideWallGeometry,
-        tiled.clone(),
-        { x: tankMid.x, y: tankMid.y, z: tankSideWallCenterZ },
-        { x: 0, y: 0, z: angle },
+        this._createPlanPrismGeometry(wallPlan, tankFloorZ, tankTop),
+        sideWallMaterial,
+        { x: 0, y: 0, z: 0 },
+        null,
         `infinity-catch-side-wall-${index ? 'b' : 'a'}`
       );
       sideWall.userData.isWall = true;
       sideWall.userData.forceVerticalUV = true;
       sideWall.userData.isInfinityCatchSurface = true;
       sideWall.userData.isInfinityTankGroundFixed = true;
-      sideWall.userData.infinityTankBaseZ = sideWall.position.z + elevation;
+      sideWall.userData.infinityTankBaseZ = elevation;
 
+      // Coping uses the same shared junction, expanded by 25 mm on every open
+      // edge. This preserves a 250 mm cap over the 200 mm side wall and makes
+      // its outer end finish flush with the curved outer coping.
+      const overhang = (copingWidth - tankWall) * 0.5;
+      const radialDir = outerPoint.clone().sub(innerPoint).normalize();
+      const tangentDir = tangent.clone().normalize();
+      const capPlan = [
+        innerPoint.clone().addScaledVector(radialDir, -overhang).addScaledVector(tangentDir, -overhang),
+        outerPoint.clone().addScaledVector(radialDir, overhang).addScaledVector(tangentDir, -overhang),
+        outerPoint.clone().addScaledVector(radialDir, overhang).add(tangent).addScaledVector(tangentDir, overhang),
+        innerPoint.clone().addScaledVector(radialDir, -overhang).add(tangent).addScaledVector(tangentDir, overhang)
+      ];
+      const sideCapMaterial = copingMaterial.clone?.() || copingMaterial;
+      sideCapMaterial.side = THREE.DoubleSide;
+      sideCapMaterial.needsUpdate = true;
       const sideCap = this._addFeatureMesh(
         group,
-        // Match the coping run to the shortened side wall. Its 250 mm width
-        // remains across the wall, but it no longer extends beyond the curved
-        // outer coping at either tank end.
-        this._applyMeterUVsToBoxGeometry(new THREE.BoxGeometry(tankWallRun, copingWidth, copingThickness)),
-        copingMaterial.clone?.() || copingMaterial,
-        { x: tankMid.x, y: tankMid.y, z: tankTop + copingThickness * 0.5 },
-        { x: 0, y: 0, z: angle },
+        this._createPlanPrismGeometry(capPlan, tankTop, tankTop + copingThickness),
+        sideCapMaterial,
+        { x: 0, y: 0, z: 0 },
+        null,
         `infinity-catch-side-coping-${index ? 'b' : 'a'}`
       );
+      sideCap.userData.isCoping = true;
       sideCap.userData.isInfinityTankGroundFixed = true;
-      sideCap.userData.infinityTankBaseZ = sideCap.position.z + elevation;
+      sideCap.userData.infinityTankBaseZ = elevation;
     });
 
     // A single indexed vertical curtain shares vertices along the whole arc,
