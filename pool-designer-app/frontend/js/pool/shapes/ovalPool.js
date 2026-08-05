@@ -2,6 +2,7 @@
 import * as THREE from "https://esm.sh/three@0.158.0";
 import { createStoneMaterial } from "../../materials/StoneMaterialFactory.js";
 import { createPoolWater } from "../water.js";
+import { trimFloorToWallInterior } from "../floorTrim.js";
 
 const STEP_PRESET_WIDTH = 0.9; // metres: preset left/centre/right step width
 const DEFAULT_BENCH2_EXTENSION = 0.6; // metres: second/full-width bench starts at 600 mm
@@ -1413,6 +1414,7 @@ floor.position.set(cx, cy, 0);
 floor.userData.isFloor = true;
 floor.userData.type = "floor";
 group.add(floor);
+trimFloorToWallInterior(floor, outline);
 
 
   const getLockedFloorDepthAt = (worldX, worldY) => {
