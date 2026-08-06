@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260806-lshape-outer-coping-asymmetric-v5";
+} from "../scene.js?v=20260807-lshape-coping-junction-miter-v1";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -8936,31 +8936,47 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     });
 
     // Build the catchment coping explicitly to the requested 250 mm width.
+    // The 200 mm outer wall is fully covered, with the remaining 50 mm
+    // overhanging INTO the tank and zero overhang behind the outer wall.
     const longWallCopingLength = tankLength;
     const longCapGeometry = alongX
       ? new THREE.BoxGeometry(longWallCopingLength, catchmentCopingWidth, copingThickness)
       : new THREE.BoxGeometry(catchmentCopingWidth, longWallCopingLength, copingThickness);
     const copingZ = tankTop + copingThickness * 0.5;
+    const outerCopingCenter = outerWallPos.clone().addScaledVector(normal, 0.025);
 
     const outerCoping = this._addFeatureMesh(group, longCapGeometry, copingMaterial.clone?.() || copingMaterial,
-      { x: outerWallPos.x, y: outerWallPos.y, z: copingZ }, null, 'infinity-catch-coping-outer');
+      { x: outerCopingCenter.x, y: outerCopingCenter.y, z: copingZ }, null, 'infinity-catch-coping-outer');
     outerCoping.userData.isInfinityTankGroundFixed = true;
     outerCoping.userData.infinityTankBaseZ = outerCoping.position.z + this.getPoolElevation();
 
-    // Add 250 mm-wide coping to both exposed side tank-wall segments. These
-    // caps sit at the fixed tank-top level and do not follow raised-pool height.
+    // Use the same shared-junction rule as the oval tank. The side coping must
+    // terminate at the INNER edge of the outer coping, not run underneath or
+    // through it. This removes the wedge/overlap at both tank corners.
     if (tankSideWalls.length) {
+      const outerWallInnerFaceFromCenter = tankWallThickness * 0.5;
+      const outerCopingInnerOverhang = catchmentCopingWidth - tankWallThickness; // 50 mm into tank
+      const outerCopingInnerEdgeFromOuterWallCenter = outerWallInnerFaceFromCenter + outerCopingInnerOverhang;
+      const overlapRemoved = tankWallThickness * 0.5 + outerCopingInnerEdgeFromOuterWallCenter; // 250 mm
+      const sideCopingRun = Math.max(0.001, tankWallRun - overlapRemoved);
       const sideCapGeometry = alongX
-        ? new THREE.BoxGeometry(catchmentCopingWidth, tankWallRun, copingThickness)
-        : new THREE.BoxGeometry(tankWallRun, catchmentCopingWidth, copingThickness);
+        ? new THREE.BoxGeometry(catchmentCopingWidth, sideCopingRun, copingThickness)
+        : new THREE.BoxGeometry(sideCopingRun, catchmentCopingWidth, copingThickness);
+
       tankSideWalls.forEach((tankSide, index) => {
+        // Shortening happens at the OUTER end only, so move the cap centre back
+        // toward the pool by half the removed overlap. The 25 mm tangent shift
+        // keeps each 250 mm side cap flush externally with 50 mm into the tank.
+        const sideCapCenter = tankSide.position.clone()
+          .addScaledVector(normal, overlapRemoved * 0.5)
+          .addScaledVector(tangent, -sideSigns[index] * 0.025);
         const sideCoping = this._addFeatureMesh(
           group,
           sideCapGeometry.clone(),
           copingMaterial.clone?.() || copingMaterial,
           {
-            x: tankSide.position.x - tangent.x * sideSigns[index] * 0.025,
-            y: tankSide.position.y - tangent.y * sideSigns[index] * 0.025,
+            x: sideCapCenter.x,
+            y: sideCapCenter.y,
             z: copingZ
           },
           null,
