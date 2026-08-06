@@ -1,6 +1,6 @@
 // js/pool/spa.js
 import * as THREE from "https://esm.sh/three@0.158.0";
-import { updateGroundVoid } from "../scene.js?v=20260806-lshape-shared-coping-junction-v3"; // kept for compatibility if used
+import { updateGroundVoid } from "../scene.js?v=20260806-lshape-outer-coping-asymmetric-v5"; // kept for compatibility if used
 import { createPoolWater } from "./water.js";
 
 // --- SPA Constants ---

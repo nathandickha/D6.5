@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260806-lshape-shared-coping-junction-v3";
+} from "../scene.js?v=20260806-lshape-outer-coping-asymmetric-v5";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -644,8 +644,8 @@ export class PoolApp {
     // extruded up to the pool group's local zero level.
     const tankWallTop=groundTopZ;
     const tankCopingTop=tankWallTop+copingH;
-    const tankFloorZ=tankWallTop-Math.max(depth,0.7);
-    const tankWaterTop=tankWallTop-0.20;
+    const tankFloorZ=tankWallTop-0.60;
+    const tankWaterTop=tankWallTop-0.10;
     const outerOffset=0.80,poolWallExtension=0.30;
     const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
     const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
@@ -733,8 +733,19 @@ export class PoolApp {
       const wallPlan=splitPiecePlan(pc,-wallT*0.5,wallT*0.5);
       const top=pc.selected?loweredTop:0;
       const wm=tileMat;
-      const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,-depth,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall');
+      const wallBottom=pc.selected?tankFloorZ:-depth;
+      const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,wallBottom,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall');
       w.userData.isWall=true;w.userData.forceVerticalUV=true;
+      if(pc.selected&&w.geometry?.attributes?.position){
+        const positions=w.geometry.attributes.position;
+        const bottomIndices=[];
+        for(let vi=0;vi<positions.count;vi++){
+          if(Math.abs(positions.getZ(vi)-tankFloorZ)<1e-5)bottomIndices.push(vi);
+        }
+        w.userData.isInfinityPoolWallExtension=true;
+        w.userData.infinityPoolWallBottomFixedZ=tankFloorZ+elevation;
+        w.userData.infinityPoolWallBottomVertexIndices=bottomIndices;
+      }
       if(!pc.selected){
         // Match the authored L-shape coping: 150 mm toward the pool and
         // 100 mm outward. This gives a 50 mm internal overhang over the
@@ -799,8 +810,10 @@ export class PoolApp {
     const sheetOuter=offsetOpenPolyline(centre, wallT*0.5+0.01);
     const tankOuterInner=offsetOpenPolyline(centre,outerOffset);
     const tankOuterFace=offsetOpenPolyline(centre,outerOffset+wallT);
-    const copingInner=offsetOpenPolyline(centre,outerOffset-0.025);
-    const copingOuter=offsetOpenPolyline(centre,outerOffset+wallT+0.025);
+    // Outer tank coping is 250 mm wide with no rear overhang:
+    // 200 mm covers the full outer wall thickness and 50 mm projects into the tank.
+    const copingInner=offsetOpenPolyline(centre,outerOffset-0.05);
+    const copingOuter=offsetOpenPolyline(centre,outerOffset+wallT);
 
     const waterMeshes=[];
     const overflowPlan=stripPolygon(poolInner,poolOuter);
@@ -835,7 +848,17 @@ export class PoolApp {
     const sheetPlan=stripPolygon(poolOuter,sheetOuter);
     if(sheetPlan.length>=4){
       const sh=createPoolWater(this._createPlanPrismGeometry(sheetPlan,tankWaterTop,loweredTop));
-      sh.name='infinity-water-sheet';sh.userData.isInfinitySpillover=true;group.add(sh);waterMeshes.push(sh);
+      sh.name='infinity-water-sheet';sh.userData.isInfinitySpillover=true;
+      if(sh.geometry?.attributes?.position){
+        const positions=sh.geometry.attributes.position;
+        const bottomIndices=[];
+        for(let vi=0;vi<positions.count;vi++){
+          if(Math.abs(positions.getZ(vi)-tankWaterTop)<1e-5)bottomIndices.push(vi);
+        }
+        sh.userData.infinitySheetBottomFixedZ=tankWaterTop+elevation;
+        sh.userData.infinitySheetBottomVertexIndices=bottomIndices;
+      }
+      group.add(sh);waterMeshes.push(sh);
     }
 
     // At each spillway end, extend the pool wall 300 mm out over the tank at
@@ -855,8 +878,18 @@ export class PoolApp {
 
       const extensionPlan=[base,extensionEnd,extensionEnd.clone().add(shift),base.clone().add(shift)];
       const em=tileMat;
-      const extension=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,tankFloorZ-elevation,0),em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
+      const extension=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,tankFloorZ,0),em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
       extension.userData.isWall=true;extension.userData.forceVerticalUV=true;
+      if(extension.geometry?.attributes?.position){
+        const positions=extension.geometry.attributes.position;
+        const bottomIndices=[];
+        for(let vi=0;vi<positions.count;vi++){
+          if(Math.abs(positions.getZ(vi)-tankFloorZ)<1e-5)bottomIndices.push(vi);
+        }
+        extension.userData.isInfinityPoolWallExtension=true;
+        extension.userData.infinityPoolWallBottomFixedZ=tankFloorZ+elevation;
+        extension.userData.infinityPoolWallBottomVertexIndices=bottomIndices;
+      }
       const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,0,copingH),copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
       extensionCap.userData.isCoping=true;
 
