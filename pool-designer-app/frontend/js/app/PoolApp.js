@@ -633,7 +633,17 @@ export class PoolApp {
     const {path,range,pieces}=this._splitLPathByRange();
     const elevation=this.getPoolElevation();
     const depth=Math.max(0.4,Number(this.poolParams?.deepDepth||this.poolParams?.depth||1.8));
-    const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10,tankFloorZ=-Math.max(depth,0.7),tankWallTop=-copingH,tankWaterTop=-0.20,outerOffset=0.80,poolWallExtension=0.30;
+    // Anchor the catch tank to the actual visible top of the ground plane.
+    // These values are local to the raised pool group; the existing
+    // isInfinityTankGroundFixed counter-offset then keeps them at the same
+    // world elevation when the pool height changes.
+    const groundTopZ=this._getGroundTopLocalZ();
+    const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10;
+    const tankTop=groundTopZ;
+    const tankFloorZ=tankTop-Math.max(depth,0.7);
+    const tankWallTop=tankTop-copingH;
+    const tankWaterTop=tankTop-0.20;
+    const outerOffset=0.80,poolWallExtension=0.30;
     const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
     const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
     const tileMat=(Array.isArray(tileSource)?tileSource[0]:tileSource)?.clone?.() || new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide});
