@@ -649,10 +649,28 @@ export class PoolApp {
     const outerOffset=0.80,poolWallExtension=0.30;
     const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
     const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
-    const tileMat=(Array.isArray(tileSource)?tileSource[0]:tileSource)?.clone?.() || new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide});
-    const copingMat=(Array.isArray(copingSource)?copingSource[0]:copingSource)?.clone?.() || tileMat.clone();
+    const tileMat=(Array.isArray(tileSource)?tileSource[0]:tileSource) || new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide});
+    const copingMat=(Array.isArray(copingSource)?copingSource[0]:copingSource) || tileMat;
+    // Reuse the authored pool material instances exactly. Cloning these materials
+    // caused the infinity replacement walls to render with a visibly different
+    // tint because their shader/texture state could diverge from the pool shell.
 
     // Hide the authored L walls/coping and rebuild split pieces so a handle can stop mid-wall.
+    // Hide the canonical mesh arrays explicitly as well as traversing the group;
+    // this prevents an authored wall face and its infinity replacement from
+    // occupying the same plane and darkening the selected tile.
+    const authoredMeshes=[
+      ...(this.poolGroup?.userData?.wallMeshes||[]),
+      ...(this.poolGroup?.userData?.copingSegments||[]),
+      ...(this.poolGroup?.userData?.copingMesh?[this.poolGroup.userData.copingMesh]:[])
+    ];
+    for(const o of authoredMeshes){
+      if(!o)continue;
+      if(!this._infinityHiddenCoping)this._infinityHiddenCoping=[];
+      if(!this._infinityHiddenCoping.includes(o))this._infinityHiddenCoping.push(o);
+      o.visible=false;
+      o.userData.infinitySuppressed=true;
+    }
     this.poolGroup?.traverse?.(o=>{
       if(o?.userData?.isWall||o?.userData?.isCoping){
         if(o===group)return;
@@ -714,12 +732,15 @@ export class PoolApp {
       if(pc.p0.distanceTo(pc.p1)<0.01)continue;
       const wallPlan=splitPiecePlan(pc,-wallT*0.5,wallT*0.5);
       const top=pc.selected?loweredTop:0;
-      const wm=tileMat.clone?.()||tileMat;wm.side=THREE.DoubleSide;
+      const wm=tileMat;
       const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,-depth,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall');
       w.userData.isWall=true;w.userData.forceVerticalUV=true;
       if(!pc.selected){
-        const capPlan=splitPiecePlan(pc,-copingW*0.5,copingW*0.5);
-        const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;
+        // Match the authored L-shape coping: 150 mm toward the pool and
+        // 100 mm outward. This gives a 50 mm internal overhang over the
+        // 200 mm wall while keeping the rear edge flush with the wall.
+        const capPlan=splitPiecePlan(pc,-0.15,0.10);
+        const cm=copingMat;
         const c=this._addFeatureMesh(group,this._createPlanPrismGeometry(capPlan,0,copingH),cm,{x:0,y:0,z:0},null,'infinity-l-remaining-coping');
         c.userData.isCoping=true;
       }
@@ -790,7 +811,7 @@ export class PoolApp {
 
     const tankPlan=stripPolygon(poolOuter,tankOuterInner);
     if(tankPlan.length>=4){
-      const fm=tileMat.clone?.()||tileMat;fm.side=THREE.DoubleSide;
+      const fm=tileMat;
       const fl=this._addFeatureMesh(group,this._createPlanPrismGeometry(tankPlan,tankFloorZ,tankFloorZ+0.1),fm,{x:0,y:0,z:0},null,'infinity-catch-floor');
       fl.userData.isFloor=true;fl.userData.isInfinityTankGroundFixed=true;fl.userData.infinityTankBaseZ=elevation;
       const water=createPoolWater(this._createPlanPrismGeometry(tankPlan,tankWaterTop-0.01,tankWaterTop));
@@ -799,14 +820,14 @@ export class PoolApp {
 
     const outerWallPlan=stripPolygon(tankOuterInner,tankOuterFace);
     if(outerWallPlan.length>=4){
-      const om=tileMat.clone?.()||tileMat;om.side=THREE.DoubleSide;
+      const om=tileMat;
       const wall=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerWallPlan,tankFloorZ,tankWallTop),om,{x:0,y:0,z:0},null,'infinity-catch-wall-outer');
       wall.userData.isWall=true;wall.userData.forceVerticalUV=true;wall.userData.isInfinityTankGroundFixed=true;wall.userData.infinityTankBaseZ=elevation;
     }
 
     const outerCapPlan=stripPolygon(copingInner,copingOuter);
     if(outerCapPlan.length>=4){
-      const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;
+      const cm=copingMat;
       const cap=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerCapPlan,tankWallTop,tankCopingTop),cm,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
       cap.userData.isCoping=true;cap.userData.isInfinityTankGroundFixed=true;cap.userData.infinityTankBaseZ=elevation;
     }
@@ -833,17 +854,17 @@ export class PoolApp {
       const extensionEnd=base.clone().addScaledVector(outward,poolWallExtension);
 
       const extensionPlan=[base,extensionEnd,extensionEnd.clone().add(shift),base.clone().add(shift)];
-      const em=tileMat.clone?.()||tileMat;em.side=THREE.DoubleSide;
+      const em=tileMat;
       const extension=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,tankFloorZ-elevation,0),em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
       extension.userData.isWall=true;extension.userData.forceVerticalUV=true;
-      const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,0,copingH),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
+      const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,0,copingH),copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
       extensionCap.userData.isCoping=true;
 
       const plan=[extensionEnd,far,far.clone().add(shift),extensionEnd.clone().add(shift)];
-      const sm=tileMat.clone?.()||tileMat;sm.side=THREE.DoubleSide;
+      const sm=tileMat;
       const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankFloorZ,tankWallTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${def.name}`);
       sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation;
-      const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankWallTop,tankCopingTop),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
+      const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankWallTop,tankCopingTop),copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
       cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation;
     }
 
@@ -7771,7 +7792,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     });
     this._infinityCopingGeometryEntries = [];
     const hidden = this._infinityHiddenCoping || [];
-    hidden.forEach((mesh) => { if (mesh) mesh.visible = true; });
+    hidden.forEach((mesh) => { if (mesh) { mesh.visible = true; if(mesh.userData) delete mesh.userData.infinitySuppressed; } });
     this._infinityHiddenCoping = [];
   }
 

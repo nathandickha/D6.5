@@ -2482,6 +2482,17 @@ export async function initScene() {
 // --------------------------------------------------------
 const PAVING_WIDTH = 2.0;          // clear paving width beyond coping outer edge
 const COPING_OUTER_OVERHANG = 0.125;
+
+function getPoolCopingOuterOverhang(poolGroup) {
+  // L-shape coping is intentionally asymmetric: 150 mm inward and
+  // 100 mm outward from the wall centreline. Its back edge is therefore
+  // flush with the 200 mm wall, so paving must begin at 100 mm.
+  const pts = poolGroup?.userData?.outerPts;
+  const params = poolGroup?.userData?.poolParams || poolGroup?.userData?.params;
+  const isLShape = Array.isArray(pts) && pts.length === 6 &&
+    (Number.isFinite(params?.notchLengthX) || Number.isFinite(params?.notchWidthY));
+  return isLShape ? 0.10 : COPING_OUTER_OVERHANG;
+}
 const PAVING_TILE_SIZE = 2.4; // 4x larger paving pattern than the previous 0.6 m scale
 let cachedPavingMaterial = null;
 
@@ -2733,8 +2744,9 @@ export function getPoolPavingContours(poolGroup) {
   const poolPts = getPoolFootprintWorldPts(poolGroup);
   const base = cleanClosedPolygon(poolPts);
   if (base.length < 3) return null;
-  const inner = offsetPolygon(base, COPING_OUTER_OVERHANG);
-  const outer = offsetPolygon(base, COPING_OUTER_OVERHANG + PAVING_WIDTH);
+  const copingOuterOverhang = getPoolCopingOuterOverhang(poolGroup);
+  const inner = offsetPolygon(base, copingOuterOverhang);
+  const outer = offsetPolygon(base, copingOuterOverhang + PAVING_WIDTH);
   if (inner.length < 3 || outer.length < 3 || inner.length !== outer.length) return null;
   return { inner, outer, width: PAVING_WIDTH };
 }
@@ -2754,8 +2766,9 @@ function updatePoolPaving(ground, poolGroup, spaGroup = null) {
   const base = cleanClosedPolygon(poolPts);
   if (base.length < 3) return;
 
-  const inner = offsetPolygon(base, COPING_OUTER_OVERHANG);
-  const outer = offsetPolygon(base, COPING_OUTER_OVERHANG + PAVING_WIDTH);
+  const copingOuterOverhang = getPoolCopingOuterOverhang(poolGroup);
+  const inner = offsetPolygon(base, copingOuterOverhang);
+  const outer = offsetPolygon(base, copingOuterOverhang + PAVING_WIDTH);
   if (inner.length < 3 || outer.length < 3) return;
 
   // ShapeGeometry expects contour and hole windings to oppose one another.
