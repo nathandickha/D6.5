@@ -8622,9 +8622,9 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const sideWallForwardExtension = 0.30;
     const catchmentCopingWidth = 0.25;
     const copingThickness = 0.05;
-    // `tankTop` is the top of the tiled tank walls / underside of coping.
-    // Keep the coping's visible top face exactly flush with the ground plane.
-    const tankTop = groundZ - copingThickness;
+    // Match the oval tank depth and fix the structural tank-wall top at the
+    // ground-plane level. Coping remains a separate 50 mm cap above the wall.
+    const tankTop = groundZ;
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
     // Keep a 200 mm clear gap between the outside face of the infinity wall
     // and the open inner edge of the catch tank.
@@ -8901,7 +8901,13 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const catchWaterCenter = tankCenter.clone().addScaledVector(normal, tankWallThickness * 0.5);
     const catchWater = createPoolWater(catchWaterGeometry);
     catchWater.name = 'infinity-catch-water';
-    catchWater.position.set(catchWaterCenter.x, catchWaterCenter.y, tankTop - 0.105);
+    const catchWaterThickness = 0.025;
+    const catchWaterSurfaceDrop = 0.10;
+    catchWater.position.set(
+      catchWaterCenter.x,
+      catchWaterCenter.y,
+      tankTop - catchWaterSurfaceDrop - catchWaterThickness * 0.5
+    );
     catchWater.userData.isInfinityWater = true;
     catchWater.userData.isInfinityCatchWater = true;
     catchWater.userData.isInfinityTankGroundFixed = true;
@@ -8924,7 +8930,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     // Because the infinity feature is parented to the raised pool, subtract the
     // current pool elevation here and update these lower vertices whenever the
     // pool height changes. The upper edge remains attached to the pool water.
-    const catchWaterSurfaceZ = catchWater.position.z + 0.025 * 0.5;
+    const catchWaterSurfaceZ = catchWater.position.z + catchWaterThickness * 0.5;
     const currentPoolElevation = this.getPoolElevation();
     const sheetBottomFixedZ = catchWaterSurfaceZ + currentPoolElevation;
     const sheetBottom = sheetBottomFixedZ - currentPoolElevation;

@@ -212,7 +212,7 @@ function lineIntersection2D(a1, a2, b1, b2) {
   return new THREE.Vector2(a1.x + dax * t, a1.y + day * t);
 }
 
-function createMiteredWallPrism(points, index, halfThickness, height) {
+function createMiteredWallPrism(points, index, innerThickness, height, outerThickness = innerThickness) {
   const count = points.length;
   const pPrev = points[(index - 1 + count) % count];
   const p0 = points[index];
@@ -244,19 +244,19 @@ function createMiteredWallPrism(points, index, halfThickness, height) {
     b.clone().addScaledVector(normal, dist)
   ];
 
-  const [curInnerA, curInnerB] = offsetLine(p0, p1, curIn, halfThickness);
-  const [curOuterA, curOuterB] = offsetLine(p0, p1, curOut, halfThickness);
-  const [prevInnerA, prevInnerB] = offsetLine(pPrev, p0, prevIn, halfThickness);
-  const [prevOuterA, prevOuterB] = offsetLine(pPrev, p0, prevOut, halfThickness);
-  const [nextInnerA, nextInnerB] = offsetLine(p1, pNext, nextIn, halfThickness);
-  const [nextOuterA, nextOuterB] = offsetLine(p1, pNext, nextOut, halfThickness);
+  const [curInnerA, curInnerB] = offsetLine(p0, p1, curIn, innerThickness);
+  const [curOuterA, curOuterB] = offsetLine(p0, p1, curOut, outerThickness);
+  const [prevInnerA, prevInnerB] = offsetLine(pPrev, p0, prevIn, innerThickness);
+  const [prevOuterA, prevOuterB] = offsetLine(pPrev, p0, prevOut, outerThickness);
+  const [nextInnerA, nextInnerB] = offsetLine(p1, pNext, nextIn, innerThickness);
+  const [nextOuterA, nextOuterB] = offsetLine(p1, pNext, nextOut, outerThickness);
 
   let innerStart = lineIntersection2D(prevInnerA, prevInnerB, curInnerA, curInnerB) || curInnerA.clone();
   let outerStart = lineIntersection2D(prevOuterA, prevOuterB, curOuterA, curOuterB) || curOuterA.clone();
   let innerEnd = lineIntersection2D(curInnerA, curInnerB, nextInnerA, nextInnerB) || curInnerB.clone();
   let outerEnd = lineIntersection2D(curOuterA, curOuterB, nextOuterA, nextOuterB) || curOuterB.clone();
 
-  const maxMiter = halfThickness * 8;
+  const maxMiter = Math.max(innerThickness, outerThickness) * 8;
   if (innerStart.distanceTo(p0) > maxMiter) innerStart = curInnerA.clone();
   if (outerStart.distanceTo(p0) > maxMiter) outerStart = curOuterA.clone();
   if (innerEnd.distanceTo(p1) > maxMiter) innerEnd = curInnerB.clone();
@@ -1976,7 +1976,10 @@ export function createLShapePool(params, tileSize = 0.3) {
     const p0 = pts2D[i];
     const p1 = pts2D[(i + 1) % count];
     const pNext = pts2D[(i + 2) % count];
-    const copingGeo = createMiteredWallPrism(pts2D, i, 0.125, copingDepth);
+    // 250 mm total coping width: 50 mm overhang into the pool plus the
+    // complete 200 mm wall thickness. The outside/back edge therefore stays
+    // exactly flush with the outside face of the pool wall.
+    const copingGeo = createMiteredWallPrism(pts2D, i, 0.15, copingDepth, 0.10);
     if (!copingGeo) continue;
     generateMeterUVsForBoxGeometry(copingGeo, tileSize);
 
