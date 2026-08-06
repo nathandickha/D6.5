@@ -633,7 +633,7 @@ export class PoolApp {
     const {path,range,pieces}=this._splitLPathByRange();
     const elevation=this.getPoolElevation();
     const depth=Math.max(0.4,Number(this.poolParams?.deepDepth||this.poolParams?.depth||1.8));
-    const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10,groundPlaneZ=0,tankFloorZ=-Math.max(depth,0.7),tankWallTop=groundPlaneZ-copingH,tankWaterTop=groundPlaneZ-0.20,outerOffset=0.80,poolWallExtension=0.30;
+    const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10,tankFloorZ=-Math.max(depth,0.7),tankWallTop=-copingH,tankWaterTop=-0.20,outerOffset=0.80,poolWallExtension=0.30;
     const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
     const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
     const tileMat=(Array.isArray(tileSource)?tileSource[0]:tileSource)?.clone?.() || new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide});
@@ -804,116 +804,33 @@ export class PoolApp {
       sh.name='infinity-water-sheet';sh.userData.isInfinitySpillover=true;group.add(sh);waterMeshes.push(sh);
     }
 
-    // At each spillway end, continue the adjoining full-height pool wall by
-    // exactly 300 mm. At an existing L-shape corner the extension follows the
-    // neighbouring non-infinity wall, matching the rectangle-pool behaviour.
-    // If a handle stops part-way along a wall, the extension runs perpendicular
-    // to that wall. All extension and tank-side junctions share the same edge.
-    const endpointDefs=[
-      {distance:range.start,i:0,isStart:true,name:'a'},
-      {distance:range.end,i:centre.length-1,isStart:false,name:'b'}
+    // At each spillway end, extend the pool wall 300 mm out over the tank at
+    // pool-coping height. The ground-fixed tank side wall begins after that
+    // extension and terminates at the outer tank wall.
+    const endDefs=[
+      {i:0,sign:-1,name:'a'},
+      {i:centre.length-1,sign:1,name:'b'}
     ];
-    const normalFor=(t)=>new THREE.Vector2(t.y,-t.x).normalize();
-    const segmentAtVertex=(distance)=>{
-      const d=((distance%path.total)+path.total)%path.total;
-      return path.segments.findIndex(seg=>Math.abs(d-seg.start)<1e-7);
-    };
-    const endpointExtensionDirection=(def)=>{
-      const vertexIndex=segmentAtVertex(def.distance);
-      if(vertexIndex>=0){
-        if(def.isStart){
-          // The previous standard wall approaches the start vertex; continuing
-          // in that direction projects the wall beyond the pool toward the tank.
-          const prev=path.segments[(vertexIndex-1+path.segments.length)%path.segments.length];
-          return prev.b.clone().sub(prev.a).normalize();
-        }
-        // The next standard wall leaves the end vertex back around the pool;
-        // reverse it to project outward beyond the infinity end.
-        const next=path.segments[vertexIndex];
-        return next.a.clone().sub(next.b).normalize();
-      }
-      const hit=this._pointOnLPath(def.distance);
-      const tangent=hit.segment.b.clone().sub(hit.segment.a).normalize();
-      return normalFor(tangent);
-    };
-
-    for(const def of endpointDefs){
+    for(const def of endDefs){
       const i=def.i;
-      const direction=endpointExtensionDirection(def);
+      const tangent=(i===0?centre[1].clone().sub(centre[0]):centre[i].clone().sub(centre[i-1])).normalize();
+      const shift=tangent.clone().multiplyScalar(def.sign*wallT);
+      const base=poolOuter[i].clone(),far=tankOuterFace[i].clone();
+      const outward=far.clone().sub(base).normalize();
+      const extensionEnd=base.clone().addScaledVector(outward,poolWallExtension);
 
-      // Use the exact split-wall boundary points at the endpoint. This makes the
-      // 300 mm extension share a complete edge with the original L-shape wall,
-      // rather than forming a disconnected projecting box.
-      const wallInner=offsetPointOnClosedPath(def.distance,-wallT*0.5);
-      const wallOuter=offsetPointOnClosedPath(def.distance, wallT*0.5);
-      const wallFarInner=wallInner.clone().addScaledVector(direction,poolWallExtension);
-      const wallFarOuter=wallOuter.clone().addScaledVector(direction,poolWallExtension);
-      const extensionPlan=[wallInner,wallFarInner,wallFarOuter,wallOuter];
-      const extensionGeometry=this._createPlanPrismGeometry(extensionPlan,tankFloorZ-elevation,0);
+      const extensionPlan=[base,extensionEnd,extensionEnd.clone().add(shift),base.clone().add(shift)];
       const em=tileMat.clone?.()||tileMat;em.side=THREE.DoubleSide;
-      const extension=this._addFeatureMesh(group,extensionGeometry,em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
-      extension.userData.isWall=true;
-      extension.userData.forceVerticalUV=true;
-      extension.userData.isInfinityPoolWallExtension=true;
-      extension.userData.infinityPoolWallBottomFixedZ=tankFloorZ;
-      if(extensionGeometry?.attributes?.position){
-        const pos=extensionGeometry.attributes.position;
-        let minZ=Infinity;
-        for(let vi=0;vi<pos.count;vi++)minZ=Math.min(minZ,pos.getZ(vi));
-        extension.userData.infinityPoolWallBottomVertexIndices=[];
-        for(let vi=0;vi<pos.count;vi++){
-          if(Math.abs(pos.getZ(vi)-minZ)<1e-6)extension.userData.infinityPoolWallBottomVertexIndices.push(vi);
-        }
-      }
-
-      // Continue the actual 250 mm pool coping over the same 300 mm run. Its
-      // endpoint edges are shared with the remaining pool coping and tank coping.
-      const capInner=offsetPointOnClosedPath(def.distance,-copingW*0.5);
-      const capOuter=offsetPointOnClosedPath(def.distance, copingW*0.5);
-      const capFarInner=capInner.clone().addScaledVector(direction,poolWallExtension);
-      const capFarOuter=capOuter.clone().addScaledVector(direction,poolWallExtension);
-      const extensionCapPlan=[capInner,capFarInner,capFarOuter,capOuter];
-      const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionCapPlan,0,copingH),copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
+      const extension=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,tankFloorZ-elevation,0),em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
+      extension.userData.isWall=true;extension.userData.forceVerticalUV=true;
+      const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,0,copingH),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
       extensionCap.userData.isCoping=true;
 
-      // Close the catch tank from the far edge of the 300 mm pool-wall extension
-      // to the shared inner/outer faces of the continuous outer tank wall.
-      const targetInner=tankOuterInner[i].clone();
-      const targetOuter=tankOuterFace[i].clone();
-
-      // Keep the tank side wall a true 200 mm solid for its entire run. Using
-      // the raw outer-wall inner/outer points as the far edge can taper the side
-      // wall at corners because that edge follows the outer-wall normal rather
-      // than the side-wall normal. Build both end edges from one side-wall
-      // centreline and one perpendicular thickness vector instead.
-      const sideStartCenter=wallFarInner.clone().add(wallFarOuter).multiplyScalar(0.5);
-      const sideEndCenter=targetInner.clone().add(targetOuter).multiplyScalar(0.5);
-      const sideDirection=sideEndCenter.clone().sub(sideStartCenter);
-      if(sideDirection.lengthSq()<1e-10)sideDirection.copy(direction);
-      sideDirection.normalize();
-      const sideThicknessNormal=new THREE.Vector2(sideDirection.y,-sideDirection.x).normalize();
-      // Preserve the same inside/outside ordering as the extension's far edge.
-      const extensionAcross=wallFarOuter.clone().sub(wallFarInner);
-      if(sideThicknessNormal.dot(extensionAcross)<0)sideThicknessNormal.multiplyScalar(-1);
-      const sideHalf=wallT*0.5;
-      const sideStartInner=sideStartCenter.clone().addScaledVector(sideThicknessNormal,-sideHalf);
-      const sideStartOuter=sideStartCenter.clone().addScaledVector(sideThicknessNormal, sideHalf);
-      const sideEndInner=sideEndCenter.clone().addScaledVector(sideThicknessNormal,-sideHalf);
-      const sideEndOuter=sideEndCenter.clone().addScaledVector(sideThicknessNormal, sideHalf);
-      const sidePlan=[sideStartInner,sideEndInner,sideEndOuter,sideStartOuter];
+      const plan=[extensionEnd,far,far.clone().add(shift),extensionEnd.clone().add(shift)];
       const sm=tileMat.clone?.()||tileMat;sm.side=THREE.DoubleSide;
-      const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(sidePlan,tankFloorZ,tankWallTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${def.name}`);
+      const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankFloorZ,tankWallTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${def.name}`);
       sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation;
-
-      // Match the side coping to the same centreline, with the standard 250 mm
-      // width centred over the restored 200 mm wall.
-      const capHalf=copingW*0.5;
-      const sideCapStartInner=sideStartCenter.clone().addScaledVector(sideThicknessNormal,-capHalf);
-      const sideCapStartOuter=sideStartCenter.clone().addScaledVector(sideThicknessNormal, capHalf);
-      const sideCapEndInner=sideEndCenter.clone().addScaledVector(sideThicknessNormal,-capHalf);
-      const sideCapEndOuter=sideEndCenter.clone().addScaledVector(sideThicknessNormal, capHalf);
-      const sideCapPlan=[sideCapStartInner,sideCapEndInner,sideCapEndOuter,sideCapStartOuter];
-      const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(sideCapPlan,tankWallTop,0),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
+      const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankWallTop,0),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
       cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation;
     }
 
