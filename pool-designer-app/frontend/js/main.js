@@ -208,7 +208,7 @@ let editorPreloadStarted = false;
 function preloadEditorModule() {
   if (editorModulePromise) return editorModulePromise;
   editorPreloadStarted = true;
-  editorModulePromise = import("./app/PoolApp.js?v=20260803-extension-coping-inward-25mm-v1").catch((err) => {
+  editorModulePromise = import("./app/PoolApp.js?v=20260806-lshape-shared-coping-junction-v3").catch((err) => {
     console.warn("[PoolApp] Background editor preload failed; will retry on click.", err);
     editorModulePromise = null;
     editorPreloadStarted = false;
@@ -574,7 +574,7 @@ async function renderStarterPreview3D(card, preset) {
       import("./pool/shapes/lshapePool.js"),
       import("./pool/editing/polygon.js"),
       import("./pool/spa.js"),
-      import("./scene.js"),
+      import("./scene.js?v=20260806-lshape-shared-coping-junction-v3"),
       import("./pbr/PBR.js")
     ]);
 
