@@ -880,14 +880,39 @@ export class PoolApp {
       // to the shared inner/outer faces of the continuous outer tank wall.
       const targetInner=tankOuterInner[i].clone();
       const targetOuter=tankOuterFace[i].clone();
-      const sidePlan=[wallFarInner,targetInner,targetOuter,wallFarOuter];
+
+      // Keep the tank side wall a true 200 mm solid for its entire run. Using
+      // the raw outer-wall inner/outer points as the far edge can taper the side
+      // wall at corners because that edge follows the outer-wall normal rather
+      // than the side-wall normal. Build both end edges from one side-wall
+      // centreline and one perpendicular thickness vector instead.
+      const sideStartCenter=wallFarInner.clone().add(wallFarOuter).multiplyScalar(0.5);
+      const sideEndCenter=targetInner.clone().add(targetOuter).multiplyScalar(0.5);
+      const sideDirection=sideEndCenter.clone().sub(sideStartCenter);
+      if(sideDirection.lengthSq()<1e-10)sideDirection.copy(direction);
+      sideDirection.normalize();
+      const sideThicknessNormal=new THREE.Vector2(sideDirection.y,-sideDirection.x).normalize();
+      // Preserve the same inside/outside ordering as the extension's far edge.
+      const extensionAcross=wallFarOuter.clone().sub(wallFarInner);
+      if(sideThicknessNormal.dot(extensionAcross)<0)sideThicknessNormal.multiplyScalar(-1);
+      const sideHalf=wallT*0.5;
+      const sideStartInner=sideStartCenter.clone().addScaledVector(sideThicknessNormal,-sideHalf);
+      const sideStartOuter=sideStartCenter.clone().addScaledVector(sideThicknessNormal, sideHalf);
+      const sideEndInner=sideEndCenter.clone().addScaledVector(sideThicknessNormal,-sideHalf);
+      const sideEndOuter=sideEndCenter.clone().addScaledVector(sideThicknessNormal, sideHalf);
+      const sidePlan=[sideStartInner,sideEndInner,sideEndOuter,sideStartOuter];
       const sm=tileMat.clone?.()||tileMat;sm.side=THREE.DoubleSide;
       const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(sidePlan,tankFloorZ,tankWallTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${def.name}`);
       sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation;
 
-      // The tank-side coping uses the same ground-level top and shares its outer
-      // endpoint with the continuous curved/mitred outer coping.
-      const sideCapPlan=[capFarInner,copingInner[i].clone(),copingOuter[i].clone(),capFarOuter];
+      // Match the side coping to the same centreline, with the standard 250 mm
+      // width centred over the restored 200 mm wall.
+      const capHalf=copingW*0.5;
+      const sideCapStartInner=sideStartCenter.clone().addScaledVector(sideThicknessNormal,-capHalf);
+      const sideCapStartOuter=sideStartCenter.clone().addScaledVector(sideThicknessNormal, capHalf);
+      const sideCapEndInner=sideEndCenter.clone().addScaledVector(sideThicknessNormal,-capHalf);
+      const sideCapEndOuter=sideEndCenter.clone().addScaledVector(sideThicknessNormal, capHalf);
+      const sideCapPlan=[sideCapStartInner,sideCapEndInner,sideCapEndOuter,sideCapStartOuter];
       const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(sideCapPlan,tankWallTop,0),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
       cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation;
     }
