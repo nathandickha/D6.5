@@ -639,10 +639,13 @@ export class PoolApp {
     // world elevation when the pool height changes.
     const groundTopZ=this._getGroundTopLocalZ();
     const wallT=0.20,copingW=0.25,copingH=0.05,loweredTop=-0.10;
-    const tankTop=groundTopZ;
-    const tankFloorZ=tankTop-Math.max(depth,0.7);
-    const tankWallTop=tankTop-copingH;
-    const tankWaterTop=tankTop-0.20;
+    // The structural tank wall finishes exactly at the ground plane.
+    // Coping is a separate 50 mm cap above that wall; it must never be
+    // extruded up to the pool group's local zero level.
+    const tankWallTop=groundTopZ;
+    const tankCopingTop=tankWallTop+copingH;
+    const tankFloorZ=tankWallTop-Math.max(depth,0.7);
+    const tankWaterTop=tankWallTop-0.20;
     const outerOffset=0.80,poolWallExtension=0.30;
     const tileSource=this.poolGroup?.userData?.wallMeshes?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isWall)?.material;
     const copingSource=this.poolGroup?.userData?.copingMesh?.material || this.poolGroup?.userData?.copingSegments?.[0]?.material || this.poolGroup?.children?.find(o=>o.userData?.isCoping)?.material;
@@ -804,7 +807,7 @@ export class PoolApp {
     const outerCapPlan=stripPolygon(copingInner,copingOuter);
     if(outerCapPlan.length>=4){
       const cm=copingMat.clone?.()||copingMat;cm.side=THREE.DoubleSide;
-      const cap=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerCapPlan,tankWallTop,0),cm,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
+      const cap=this._addFeatureMesh(group,this._createPlanPrismGeometry(outerCapPlan,tankWallTop,tankCopingTop),cm,{x:0,y:0,z:0},null,'infinity-catch-coping-outer');
       cap.userData.isCoping=true;cap.userData.isInfinityTankGroundFixed=true;cap.userData.infinityTankBaseZ=elevation;
     }
 
@@ -840,7 +843,7 @@ export class PoolApp {
       const sm=tileMat.clone?.()||tileMat;sm.side=THREE.DoubleSide;
       const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankFloorZ,tankWallTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${def.name}`);
       sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation;
-      const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankWallTop,0),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
+      const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(plan,tankWallTop,tankCopingTop),copingMat.clone?.()||copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
       cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation;
     }
 
@@ -8618,7 +8621,10 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     const tankWallThickness = 0.20;
     const sideWallForwardExtension = 0.30;
     const catchmentCopingWidth = 0.25;
-    const tankTop = groundZ - 0.005;
+    const copingThickness = 0.05;
+    // `tankTop` is the top of the tiled tank walls / underside of coping.
+    // Keep the coping's visible top face exactly flush with the ground plane.
+    const tankTop = groundZ - copingThickness;
     const tankOuterWidth = tankClearWidth + tankWallThickness * 2;
     // Keep a 200 mm clear gap between the outside face of the infinity wall
     // and the open inner edge of the catch tank.
@@ -8823,8 +8829,6 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
       copingMaterial = sourceMaterial?.clone?.() || sourceMaterial;
     }
     if (!copingMaterial) copingMaterial = tiled.clone();
-
-    const copingThickness = 0.05;
 
     // Continue the pool coping over the two new 300 mm full-height pool-wall
     // extensions. These caps use the same 250 mm coping width and material as
