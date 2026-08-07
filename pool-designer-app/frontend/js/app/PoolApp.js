@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-lshape-coping-junction-v4";
+} from "../scene.js?v=20260807-handle-hover-v2";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -263,8 +263,8 @@ export class PoolApp {
     this.lInfinityRange = null;
     this.lInfinityHandles = { meshes: {}, drag: null, raycaster: null, mouse: null };
 
-    // Scene-handle reveal state. Handles stay fully transparent until the
-    // pointer is over the element they edit (or the handle itself), then fade in.
+    // Scene-handle reveal state. Handles remain at 50% opacity by default and
+    // become fully opaque while the pointer is over the element they edit.
     this.handleHoverReveal = { pool: false, spa: false, infinity: false };
 
 
@@ -352,7 +352,7 @@ export class PoolApp {
     const material = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
-      opacity: 0,
+      opacity: 0.5,
       depthTest: false,
       depthWrite: false
     });
@@ -400,9 +400,9 @@ export class PoolApp {
     this._allSceneDimensionHandles().forEach((mesh) => {
       if (!mesh?.material) return;
       const category = this._handleRevealCategory(mesh);
-      const target = mesh.userData?.handleActive ? 1 : (reveal[category] ? 0.96 : 0);
-      // Fast fade-in, softer fade-out; keeps the viewport visually clean.
-      const current = Number.isFinite(mesh.material.opacity) ? mesh.material.opacity : 0;
+      const target = mesh.userData?.handleActive ? 1 : (reveal[category] ? 1 : 0.5);
+      // Fast fade-in, softer fade back to the 50% resting state.
+      const current = Number.isFinite(mesh.material.opacity) ? mesh.material.opacity : 0.5;
       const factor = target > current ? 0.42 : 0.24;
       mesh.material.opacity = current + (target - current) * factor;
     });
@@ -440,27 +440,68 @@ export class PoolApp {
         return;
       }
 
-      // Infinity gets priority over the underlying pool shell.
-      const infinityMeshes = [];
-      this.poolFeatureGroup?.traverse?.((obj) => {
-        if (!obj?.isMesh) return;
-        const ud = obj.userData || {};
-        const name = String(obj.name || '').toLowerCase();
-        if (name.includes('infinity') || ud.isInfinitySpillwayWall || ud.isInfinityPoolWallExtension || ud.isInfinityCatchSurface || ud.isInfinityWater || ud.isInfinitySpillover) infinityMeshes.push(obj);
-      });
-      if (infinityMeshes.length && raycaster.intersectObjects(infinityMeshes, true).length) { setReveal(false, false, true); return; }
+      // Raycast the actual rendered groups instead of relying on individual
+      // userData flags. Several authored pool/spa meshes do not carry the same
+      // flags, which previously meant hovering the visible geometry did nothing.
+      const isInfinityObject = (obj) => {
+        let cur = obj;
+        while (cur) {
+          const ud = cur.userData || {};
+          const name = String(cur.name || '').toLowerCase();
+          if (name.includes('infinity') || name.includes('catch') ||
+              ud.isInfinitySpillwayWall || ud.isInfinityPoolWallExtension ||
+              ud.isInfinityCatchSurface || ud.isInfinityWater || ud.isInfinitySpillover ||
+              ud.isLInfinity || ud.isOvalInfinity) return true;
+          if (cur === this.poolFeatureGroup) break;
+          cur = cur.parent;
+        }
+        return false;
+      };
 
-      const spaMeshes = this.spa ? (this.getSpaSelectionMeshes?.() || []) : [];
-      if (spaMeshes.length && raycaster.intersectObjects(spaMeshes, true).length) { setReveal(false, true, false); return; }
+      // Infinity gets priority over the pool shell beneath it.
+      if (this.poolFeatureGroup?.visible !== false) {
+        const featureHits = raycaster.intersectObject(this.poolFeatureGroup, true);
+        if (featureHits.some(hit => isInfinityObject(hit.object))) {
+          setReveal(false, false, true);
+          return;
+        }
+      }
 
-      const poolMeshes = [];
-      this.poolGroup?.traverse?.((obj) => {
-        if (!obj?.isMesh) return;
-        const ud = obj.userData || {};
-        if (ud.isPoolFeatureGroup || ud.isInfinityCatchSurface || ud.isInfinityWater || ud.isInfinitySpillover) return;
-        if (ud.isWall || ud.isFloor || ud.isCoping || ud.isStep || ud.isBench || obj === this.poolGroup?.userData?.waterMesh) poolMeshes.push(obj);
-      });
-      if (poolMeshes.length && raycaster.intersectObjects(poolMeshes, true).length) { setReveal(true, false, false); return; }
+      // Spa: raycast the spa root itself so wall, water, coping and channel
+      // surfaces all reveal the same spa handles.
+      if (this.spa?.visible !== false) {
+        const spaRoots = Array.isArray(this.spa) ? this.spa.filter(Boolean) : [this.spa].filter(Boolean);
+        for (const root of spaRoots) {
+          if (root?.isObject3D && raycaster.intersectObject(root, true).length) {
+            setReveal(false, true, false);
+            return;
+          }
+        }
+        const spaMeshes = this.getSpaSelectionMeshes?.() || [];
+        if (spaMeshes.length && raycaster.intersectObjects(spaMeshes, true).length) {
+          setReveal(false, true, false);
+          return;
+        }
+      }
+
+      // Pool: raycast the complete pool group and accept the first visible
+      // non-handle, non-infinity surface. This covers walls, coping, floor,
+      // water, steps and shape-specific meshes regardless of their tags.
+      if (this.poolGroup?.visible !== false) {
+        const poolHits = raycaster.intersectObject(this.poolGroup, true);
+        const poolHit = poolHits.find(({ object }) => {
+          if (!object?.visible) return false;
+          if (object.userData?.isDimensionHandle) return false;
+          if (isInfinityObject(object)) return false;
+          let cur = object;
+          while (cur) {
+            if (cur === this.spa) return false;
+            cur = cur.parent;
+          }
+          return true;
+        });
+        if (poolHit) { setReveal(true, false, false); return; }
+      }
 
       setReveal(false, false, false);
     };
