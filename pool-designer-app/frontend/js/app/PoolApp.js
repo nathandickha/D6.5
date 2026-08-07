@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-lspill-tile-material-v1";
+} from "../scene.js?v=20260807-lspill-pool-facing-fascia-v1";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -897,6 +897,47 @@ export class PoolApp {
         w.userData.isInfinityPoolWallExtension=true;
         w.userData.infinityPoolWallBottomFixedZ=tankFloorZ+elevation;
         w.userData.infinityPoolWallBottomVertexIndices=bottomIndices;
+
+        // Explicit pool-facing tiled fascia for the lowered L-shape infinity wall.
+        // The structural prism remains the source of wall thickness, but its inner
+        // face can be depth-occluded by the pool floor/water at some camera angles.
+        // Keep a dedicated face 1.5 mm toward the pool interior so the same live
+        // pool tile material is always visible from inside the pool.
+        const innerA=wallPlan[0].clone();
+        const innerB=wallPlan[1].clone();
+        const outerA=wallPlan[3].clone();
+        const inward=innerA.clone().sub(outerA);
+        if(inward.lengthSq()>1e-10) inward.normalize();
+        innerA.addScaledVector(inward,0.0015);
+        innerB.addScaledVector(inward,0.0015);
+        const fasciaPositions=new Float32Array([
+          innerA.x,innerA.y,tankFloorZ,
+          innerB.x,innerB.y,tankFloorZ,
+          innerB.x,innerB.y,top,
+          innerA.x,innerA.y,top
+        ]);
+        const tile=Math.max(0.05,Number(this.tileSize)||0.3);
+        const alongX=Math.abs(innerB.x-innerA.x)>=Math.abs(innerB.y-innerA.y);
+        const uFor=(pt)=> (alongX?pt.x:pt.y)/tile;
+        const fasciaUvs=new Float32Array([
+          uFor(innerA),tankFloorZ/tile,
+          uFor(innerB),tankFloorZ/tile,
+          uFor(innerB),top/tile,
+          uFor(innerA),top/tile
+        ]);
+        const fasciaGeometry=new THREE.BufferGeometry();
+        fasciaGeometry.setAttribute('position',new THREE.BufferAttribute(fasciaPositions,3));
+        fasciaGeometry.setAttribute('uv',new THREE.BufferAttribute(fasciaUvs,2));
+        fasciaGeometry.setIndex([0,1,2,0,2,3]);
+        fasciaGeometry.computeVertexNormals();
+        fasciaGeometry.computeBoundingBox();
+        fasciaGeometry.computeBoundingSphere();
+        const fascia=this._addFeatureMesh(group,fasciaGeometry,wm,{x:0,y:0,z:0},null,'infinity-l-lowered-wall-pool-facing');
+        fascia.userData.isWall=true;
+        fascia.userData.isInfinityPoolWallExtension=true;
+        fascia.userData.infinityPoolWallBottomFixedZ=tankFloorZ+elevation;
+        fascia.userData.infinityPoolWallBottomVertexIndices=[0,1];
+        fascia.renderOrder=Math.max(Number(w.renderOrder)||0,2);
       }
       if(!pc.selected){
         // Match the authored L-shape coping: 150 mm toward the pool and
