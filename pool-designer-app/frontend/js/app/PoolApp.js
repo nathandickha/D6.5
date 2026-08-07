@@ -263,6 +263,10 @@ export class PoolApp {
     this.lInfinityRange = null;
     this.lInfinityHandles = { meshes: {}, drag: null, raycaster: null, mouse: null };
 
+    // Scene-handle reveal state. Handles stay fully transparent until the
+    // pointer is over the element they edit (or the handle itself), then fade in.
+    this.handleHoverReveal = { pool: false, spa: false, infinity: false };
+
 
     // -----------------------------
     // Live preview + debounced rebuild (performance)
@@ -324,20 +328,22 @@ export class PoolApp {
     canvas.height = size;
     const ctx = canvas.getContext("2d");
 
+    // Smaller, quieter Atelier-style handle. The sprite material controls the
+    // reveal opacity so the canvas itself can stay crisp when hovered.
     ctx.clearRect(0, 0, size, size);
     ctx.beginPath();
-    ctx.arc(size * 0.5, size * 0.5, size * 0.34, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.98)";
+    ctx.arc(size * 0.5, size * 0.5, size * 0.30, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(70,70,70,0.28)";
     ctx.stroke();
 
-    ctx.fillStyle = "#1d1d1d";
-    ctx.font = "700 46px Arial";
+    ctx.fillStyle = "rgba(30,30,30,0.90)";
+    ctx.font = "500 38px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(arrow, size * 0.5, size * 0.52);
+    ctx.fillText(arrow, size * 0.5, size * 0.515);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -346,26 +352,122 @@ export class PoolApp {
     const material = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
+      opacity: 0,
       depthTest: false,
       depthWrite: false
     });
 
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(0.62, 0.62, 0.62);
+    sprite.scale.set(0.36, 0.36, 0.36);
     sprite.renderOrder = 2100;
     sprite.frustumCulled = false;
     sprite.userData.handleKey = key;
     sprite.userData.handleAxis = axisInfo.axis;
     sprite.userData.handleAxisVector = axisInfo.vector;
     sprite.userData.isDimensionHandle = true;
+    sprite.userData.handleActive = false;
     return sprite;
   }
 
   _setDimensionHandleActive(mesh, active) {
     if (!mesh) return;
-    const scale = active ? 0.68 : 0.62;
+    mesh.userData.handleActive = !!active;
+    const scale = active ? 0.41 : 0.36;
     mesh.scale.set(scale, scale, scale);
-    if (mesh.material) mesh.material.opacity = active ? 1 : 0.98;
+    if (mesh.material && active) mesh.material.opacity = 1;
+  }
+
+  _handleRevealCategory(mesh) {
+    const key = String(mesh?.userData?.handleKey || '').toLowerCase();
+    if (key.includes('infinity')) return 'infinity';
+    if (key.startsWith('spa')) return 'spa';
+    return 'pool';
+  }
+
+  _allSceneDimensionHandles() {
+    const sets = [
+      this.dimensionHandles?.meshes,
+      this.spaDimensionHandles?.meshes,
+      this.sectionDimensionHandles?.meshes,
+      this.ovalInfinityHandles?.meshes,
+      this.lInfinityHandles?.meshes
+    ];
+    return sets.flatMap(set => Object.values(set || {})).filter(Boolean);
+  }
+
+  _updateHandleRevealOpacity() {
+    const reveal = this.handleHoverReveal || {};
+    this._allSceneDimensionHandles().forEach((mesh) => {
+      if (!mesh?.material) return;
+      const category = this._handleRevealCategory(mesh);
+      const target = mesh.userData?.handleActive ? 1 : (reveal[category] ? 0.96 : 0);
+      // Fast fade-in, softer fade-out; keeps the viewport visually clean.
+      const current = Number.isFinite(mesh.material.opacity) ? mesh.material.opacity : 0;
+      const factor = target > current ? 0.42 : 0.24;
+      mesh.material.opacity = current + (target - current) * factor;
+    });
+  }
+
+  _setupHandleHoverReveal() {
+    if (this._handleHoverRevealSetup || !this.renderer?.domElement || !this.camera) return;
+    this._handleHoverRevealSetup = true;
+    const dom = this.renderer.domElement;
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const setReveal = (pool = false, spa = false, infinity = false) => {
+      this.handleHoverReveal = { pool: !!pool, spa: !!spa, infinity: !!infinity };
+    };
+
+    this._boundHandleRevealPointerMove = (event) => {
+      // Preserve the relevant handle set while a drag is active.
+      if (this.ovalInfinityHandles?.drag || this.lInfinityHandles?.drag) { setReveal(false, false, true); return; }
+      if (this.spaDimensionHandles?.drag) { setReveal(false, true, false); return; }
+      if (this.dimensionHandles?.drag || this.sectionDimensionHandles?.drag) { setReveal(true, false, false); return; }
+
+      const rect = dom.getBoundingClientRect();
+      mouse.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(mouse, this.camera);
+
+      // Hovering an invisible handle itself must reveal its associated set.
+      const handleHits = raycaster.intersectObjects(this._allSceneDimensionHandles().filter(h => h?.visible), false);
+      if (handleHits.length) {
+        const category = this._handleRevealCategory(handleHits[0].object);
+        setReveal(category === 'pool', category === 'spa', category === 'infinity');
+        return;
+      }
+
+      // Infinity gets priority over the underlying pool shell.
+      const infinityMeshes = [];
+      this.poolFeatureGroup?.traverse?.((obj) => {
+        if (!obj?.isMesh) return;
+        const ud = obj.userData || {};
+        const name = String(obj.name || '').toLowerCase();
+        if (name.includes('infinity') || ud.isInfinitySpillwayWall || ud.isInfinityPoolWallExtension || ud.isInfinityCatchSurface || ud.isInfinityWater || ud.isInfinitySpillover) infinityMeshes.push(obj);
+      });
+      if (infinityMeshes.length && raycaster.intersectObjects(infinityMeshes, true).length) { setReveal(false, false, true); return; }
+
+      const spaMeshes = this.spa ? (this.getSpaSelectionMeshes?.() || []) : [];
+      if (spaMeshes.length && raycaster.intersectObjects(spaMeshes, true).length) { setReveal(false, true, false); return; }
+
+      const poolMeshes = [];
+      this.poolGroup?.traverse?.((obj) => {
+        if (!obj?.isMesh) return;
+        const ud = obj.userData || {};
+        if (ud.isPoolFeatureGroup || ud.isInfinityCatchSurface || ud.isInfinityWater || ud.isInfinitySpillover) return;
+        if (ud.isWall || ud.isFloor || ud.isCoping || ud.isStep || ud.isBench || obj === this.poolGroup?.userData?.waterMesh) poolMeshes.push(obj);
+      });
+      if (poolMeshes.length && raycaster.intersectObjects(poolMeshes, true).length) { setReveal(true, false, false); return; }
+
+      setReveal(false, false, false);
+    };
+
+    this._boundHandleRevealPointerLeave = () => setReveal(false, false, false);
+    dom.addEventListener('pointermove', this._boundHandleRevealPointerMove, { passive: true });
+    dom.addEventListener('pointerleave', this._boundHandleRevealPointerLeave, { passive: true });
   }
 
   _orientDimensionHandleToCamera(mesh, worldPoint) {
@@ -996,6 +1098,7 @@ export class PoolApp {
     this._boundDimensionHandlePointerUp = () => this._onDimensionHandlePointerUp();
 
     this.renderer.domElement.addEventListener("pointerdown", this._boundDimensionHandlePointerDown);
+    this._setupHandleHoverReveal();
     this._boundExternalPanelFocusPointerDown = (event) => {
       if (event.button !== 0 || !this.poolGroup || !this.camera) return;
       const ndc = this._pointerToNDC(event);
@@ -9421,6 +9524,7 @@ updatePoolWaterVoid(this.poolGroup, this.spa);
     this._updateLInfinityHandles?.();
     this._updateSpaDimensionHandles();
     this._updateSectionDimensionHandles();
+    this._updateHandleRevealOpacity?.();
     this.syncPoolRaisedControl();
     this.openStarterModelView(preset);
   }
