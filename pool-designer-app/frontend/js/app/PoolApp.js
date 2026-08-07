@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-handle-hover-v2";
+} from "../scene.js?v=20260807-lspill-coping-overhang-v1";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -875,7 +875,16 @@ export class PoolApp {
       if(pc.p0.distanceTo(pc.p1)<0.01)continue;
       const wallPlan=splitPiecePlan(pc,-wallT*0.5,wallT*0.5);
       const top=pc.selected?loweredTop:0;
-      const wm=tileMat;
+      // The split L-shape infinity wall is rebuilt from an extruded plan prism.
+      // Depending on the selected perimeter direction, the pool-facing tiled
+      // fascia can become the material's back face. Use a dedicated material
+      // instance for the selected infinity section and render both sides so
+      // the tile remains visible from inside the pool and from the tank side.
+      const wm=pc.selected ? tileMat.clone() : tileMat;
+      if(pc.selected){
+        wm.side=THREE.DoubleSide;
+        wm.needsUpdate=true;
+      }
       const wallBottom=pc.selected?tankFloorZ:-depth;
       const w=this._addFeatureMesh(group,this._createPlanPrismGeometry(wallPlan,wallBottom,top),wm,{x:0,y:0,z:0},null,pc.selected?'infinity-l-lowered-wall':'infinity-l-remaining-wall');
       w.userData.isWall=true;w.userData.forceVerticalUV=true;
@@ -893,7 +902,18 @@ export class PoolApp {
         // Match the authored L-shape coping: 150 mm toward the pool and
         // 100 mm outward. This gives a 50 mm internal overhang over the
         // 200 mm wall while keeping the rear edge flush with the wall.
-        const capPlan=splitPiecePlan(pc,-0.15,0.10);
+        // At each end of the spillway, carry the normal pool coping 50 mm
+        // beyond the wall cut into the spillover opening. This is an end
+        // overhang only; no coping is added across the lowered spillway wall.
+        const samePathDistance=(a,b)=>{
+          const raw=Math.abs((((a-b)%path.total)+path.total)%path.total);
+          return Math.min(raw,path.total-raw)<1e-6;
+        };
+        let capD0=pc.d0, capD1=pc.d1;
+        if(samePathDistance(pc.d1,range.start)) capD1=pc.d1+0.05;
+        if(samePathDistance(pc.d0,range.end)) capD0=pc.d0-0.05;
+        const capPiece={...pc,d0:capD0,d1:capD1};
+        const capPlan=splitPiecePlan(capPiece,-0.15,0.10);
         const cm=copingMat;
         const c=this._addFeatureMesh(group,this._createPlanPrismGeometry(capPlan,0,copingH),cm,{x:0,y:0,z:0},null,'infinity-l-remaining-coping');
         c.userData.isCoping=true;
@@ -1038,7 +1058,9 @@ export class PoolApp {
       const extensionEnd=base.clone().addScaledVector(outward,poolWallExtension);
 
       const extensionPlan=[base,extensionEnd,extensionEnd.clone().add(shift),base.clone().add(shift)];
-      const em=tileMat;
+      const em=tileMat.clone();
+      em.side=THREE.DoubleSide;
+      em.needsUpdate=true;
       const extension=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionPlan,tankFloorZ,0),em,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-${def.name}`);
       extension.userData.isWall=true;extension.userData.forceVerticalUV=true;
       if(extension.geometry?.attributes?.position){
