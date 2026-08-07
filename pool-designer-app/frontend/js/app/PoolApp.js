@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-lspill-solid-inside-v2";
+} from "../scene.js?v=20260807-ltank-wall-snap-v3";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -910,15 +910,9 @@ export class PoolApp {
         if(inward.lengthSq()>1e-10) inward.normalize();
         innerA.addScaledVector(inward,0.0015);
         innerB.addScaledVector(inward,0.0015);
-        // The tank-side structural wall legitimately stops at the tank floor,
-        // but the pool floor can sit deeper than the tank. If the pool-facing
-        // skin also stops at tankFloorZ it leaves a visible cavity inside the
-        // pool. Extend only the pool-facing tiled face to the deeper of the
-        // pool wall base and tank floor so the shell reads as continuous.
-        const poolFacingBottom=Math.min(-depth,tankFloorZ);
         const fasciaPositions=new Float32Array([
-          innerA.x,innerA.y,poolFacingBottom,
-          innerB.x,innerB.y,poolFacingBottom,
+          innerA.x,innerA.y,tankFloorZ,
+          innerB.x,innerB.y,tankFloorZ,
           innerB.x,innerB.y,top,
           innerA.x,innerA.y,top
         ]);
@@ -926,8 +920,8 @@ export class PoolApp {
         const alongX=Math.abs(innerB.x-innerA.x)>=Math.abs(innerB.y-innerA.y);
         const uFor=(pt)=> (alongX?pt.x:pt.y)/tile;
         const fasciaUvs=new Float32Array([
-          uFor(innerA),poolFacingBottom/tile,
-          uFor(innerB),poolFacingBottom/tile,
+          uFor(innerA),tankFloorZ/tile,
+          uFor(innerB),tankFloorZ/tile,
           uFor(innerB),top/tile,
           uFor(innerA),top/tile
         ]);
@@ -941,7 +935,7 @@ export class PoolApp {
         const fascia=this._addFeatureMesh(group,fasciaGeometry,wm,{x:0,y:0,z:0},null,'infinity-l-lowered-wall-pool-facing');
         fascia.userData.isWall=true;
         fascia.userData.isInfinityPoolWallExtension=true;
-        fascia.userData.infinityPoolWallBottomFixedZ=poolFacingBottom+elevation;
+        fascia.userData.infinityPoolWallBottomFixedZ=tankFloorZ+elevation;
         fascia.userData.infinityPoolWallBottomVertexIndices=[0,1];
         fascia.renderOrder=Math.max(Number(w.renderOrder)||0,2);
       }
@@ -1025,27 +1019,18 @@ export class PoolApp {
     const copingInner=offsetOpenPolyline(centre,outerOffset-0.05);
     const copingOuter=offsetOpenPolyline(centre,outerOffset+wallT);
 
-    // L-shape tank coping junctions use one shared miter at each open end.
-    // The side coping is 250 mm wide: 50 mm overhang toward the tank and
-    // zero overhang behind the 200 mm side wall.  Extend the OUTER coping's
-    // endpoint edges to those same two points so both pieces share the exact
-    // diagonal junction instead of stopping at the inner edge or forming a wedge.
+    // L-shape tank end junctions are snapped from the pool-wall endpoint rather
+    // than inferred from the outer tank offset.  The tank side wall starts only
+    // after the 300 mm raised pool-wall extension, follows the exact same normal
+    // line, and terminates on the outer tank-wall boundary.  Keep the outer coping
+    // endpoint unmodified; the perpendicular side coping butts into that endpoint
+    // using the same snapped wall line.
     const endDefs=[
       {i:0,sign:-1,name:'a'},
       {i:centre.length-1,sign:1,name:'b'}
     ];
     const copingInnerJoined=copingInner.map((p)=>p.clone());
     const copingOuterJoined=copingOuter.map((p)=>p.clone());
-    for(const def of endDefs){
-      const i=def.i;
-      const tangent=(i===0?centre[1].clone().sub(centre[0]):centre[i].clone().sub(centre[i-1])).normalize();
-      const tankSide=tangent.clone().multiplyScalar(-def.sign);
-      const backSide=tangent.clone().multiplyScalar(def.sign);
-      // Inner/tank edge projects 50 mm into the tank.
-      copingInnerJoined[i].addScaledVector(tankSide,0.05);
-      // Outer/back edge is flush with the back of the 200 mm side wall.
-      copingOuterJoined[i].addScaledVector(backSide,wallT);
-    }
 
     const waterMeshes=[];
     const overflowPlan=stripPolygon(poolInner,poolOuter);
@@ -1134,36 +1119,31 @@ export class PoolApp {
       const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionCapPlan,0,copingH),copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
       extensionCap.userData.isCoping=true;
 
-      // Use the same shared-junction method as the oval tank. The side wall
-      // terminates on the exact end cross-section of the outer wall instead of
-      // using an estimated run length. This makes the two wall meshes share the
-      // same pair of junction vertices and prevents either mesh projecting past
-      // the other at the corner.
+      // Snap the tank side wall to the exact line of the 300 mm pool-wall
+      // extension.  Do not auto-match/reorder the outer tank endpoints: that
+      // produced a skewed quadrilateral and left the wall/coping short of the
+      // tank edge.  The tank side wall remains 200 mm thick along the pool-wall
+      // tangent and runs straight along the same outward normal as the extension.
       const nearWallA=extensionEnd.clone();
       const nearWallB=extensionEnd.clone().add(shift);
-      const outerWallEndA=tankOuterInner[i].clone();
-      const outerWallEndB=tankOuterFace[i].clone();
-      const directWallMatch=nearWallA.distanceToSquared(outerWallEndA)+nearWallB.distanceToSquared(outerWallEndB);
-      const crossedWallMatch=nearWallA.distanceToSquared(outerWallEndB)+nearWallB.distanceToSquared(outerWallEndA);
-      const farWallA=(directWallMatch<=crossedWallMatch?outerWallEndA:outerWallEndB).clone();
-      const farWallB=(directWallMatch<=crossedWallMatch?outerWallEndB:outerWallEndA).clone();
+      const snapRun=outward.clone();
+      const snapDistance=Math.max(0,far.clone().sub(extensionEnd).dot(snapRun));
+      const farWallA=extensionEnd.clone().addScaledVector(snapRun,snapDistance);
+      const farWallB=farWallA.clone().add(shift);
       const sideWallPlan=[nearWallA,farWallA,farWallB,nearWallB];
       const sm=tileMat;
       const sw=this._addFeatureMesh(group,this._createPlanPrismGeometry(sideWallPlan,tankFloorZ,tankWallTop),sm,{x:0,y:0,z:0},null,`infinity-catch-side-wall-${def.name}`);
       sw.userData.isWall=true;sw.userData.forceVerticalUV=true;sw.userData.isInfinityTankGroundFixed=true;sw.userData.infinityTankBaseZ=elevation;
 
-      // Side coping uses the same asymmetric 250 mm footprint as the raised
-      // wall coping: 50 mm toward the tank, flush at the back.  Its far edge
-      // is the exact shared miter edge already used by the outer coping.
-      // This moves the outer corner the full 250 mm across the coping width
-      // instead of leaving it aligned with the inner coping edge.
-      // Reuse the tank-side direction already calculated for the 300 mm
-      // extension coping above. Redeclaring it here caused PoolApp.js to fail
-      // during module evaluation in browsers.
+      // Build the side coping from the SAME snapped wall line.  Its 250 mm
+      // cross-section is 50 mm toward the tank plus the full 200 mm wall width,
+      // with no back overhang.  At the outer end it reaches the outer edge of the
+      // outer-tank coping, so both coping pieces meet at the same tank boundary.
       const nearCapTank=extensionEnd.clone().addScaledVector(tankSideDir,0.05);
       const nearCapBack=extensionEnd.clone().add(shift);
-      const farCapTank=copingInnerJoined[i].clone();
-      const farCapBack=copingOuterJoined[i].clone();
+      const farCapBase=farWallA.clone();
+      const farCapTank=farCapBase.clone().addScaledVector(tankSideDir,0.05);
+      const farCapBack=farCapBase.clone().add(shift);
       const sideCapPlan=[nearCapTank,farCapTank,farCapBack,nearCapBack];
       const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(sideCapPlan,tankWallTop,tankCopingTop),copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
       cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation;
