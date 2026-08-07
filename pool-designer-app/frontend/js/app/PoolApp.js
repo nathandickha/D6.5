@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-ltank-wall-hardlock-v4";
+} from "../scene.js?v=20260807-ltank-coping-shared-junction-v5";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -940,21 +940,12 @@ export class PoolApp {
         fascia.renderOrder=Math.max(Number(w.renderOrder)||0,2);
       }
       if(!pc.selected){
-        // Match the authored L-shape coping: 150 mm toward the pool and
-        // 100 mm outward. This gives a 50 mm internal overhang over the
-        // 200 mm wall while keeping the rear edge flush with the wall.
-        // At each end of the spillway, carry the normal pool coping 50 mm
-        // beyond the wall cut into the spillover opening. This is an end
-        // overhang only; no coping is added across the lowered spillway wall.
-        const samePathDistance=(a,b)=>{
-          const raw=Math.abs((((a-b)%path.total)+path.total)%path.total);
-          return Math.min(raw,path.total-raw)<1e-6;
-        };
-        let capD0=pc.d0, capD1=pc.d1;
-        if(samePathDistance(pc.d1,range.start)) capD1=pc.d1+0.05;
-        if(samePathDistance(pc.d0,range.end)) capD0=pc.d0-0.05;
-        const capPiece={...pc,d0:capD0,d1:capD1};
-        const capPlan=splitPiecePlan(capPiece,-0.15,0.10);
+        // Match the authored L-shape coping exactly: 150 mm toward the pool and
+        // 100 mm outward.  Stop the authored/replacement coping on the exact
+        // spillway boundary.  The perpendicular 300 mm raised-wall coping uses
+        // this SAME boundary edge below, so the two pieces share two identical
+        // corner vertices instead of overlapping or leaving a notch.
+        const capPlan=splitPiecePlan(pc,-0.15,0.10);
         const cm=copingMat;
         const c=this._addFeatureMesh(group,this._createPlanPrismGeometry(capPlan,0,copingH),cm,{x:0,y:0,z:0},null,'infinity-l-remaining-coping');
         c.userData.isCoping=true;
@@ -1031,6 +1022,26 @@ export class PoolApp {
     ];
     const copingInnerJoined=copingInner.map((p)=>p.clone());
     const copingOuterJoined=copingOuter.map((p)=>p.clone());
+
+    // Resolve both tank coping corners BEFORE creating the outer coping.  Each
+    // side coping and the outer coping must share the exact same two junction
+    // vertices.  Inner junction = intersection of the side coping's 50 mm
+    // tank-side overhang with the outer coping inner edge.  Outer junction =
+    // intersection of the flush side-coping back edge with the outer coping
+    // outer edge.  This is the same shared-endpoint principle used successfully
+    // on the oval tank and prevents skewed wedges/gaps at the L-shape corners.
+    const tankCopingJunctions=new Map();
+    for(const def of endDefs){
+      const i=def.i;
+      const tangent=(i===0?centre[1].clone().sub(centre[0]):centre[i].clone().sub(centre[i-1])).normalize();
+      const tankSideDir=tangent.clone().multiplyScalar(-def.sign).normalize();
+      const wallBackDir=tankSideDir.clone().multiplyScalar(-1);
+      const innerJunction=copingInner[i].clone().addScaledVector(tankSideDir,0.15);
+      const outerJunction=copingOuter[i].clone().addScaledVector(wallBackDir,0.10);
+      copingInnerJoined[i].copy(innerJunction);
+      copingOuterJoined[i].copy(outerJunction);
+      tankCopingJunctions.set(def.name,{inner:innerJunction,outer:outerJunction});
+    }
 
     const waterMeshes=[];
     const overflowPlan=stripPolygon(poolInner,poolOuter);
@@ -1130,11 +1141,16 @@ export class PoolApp {
       }
 
       // Raised-wall coping: 250 mm total, 50 mm toward the tank, zero back
-      // overhang.  It is derived from the SAME locked centreline as the wall.
-      const extCapStartTank=wallPoint(cornerCentre,tankSideDir,0.15);
-      const extCapStartBack=wallPoint(cornerCentre,wallBackDir,0.10);
-      const extCapEndTank=wallPoint(extensionEndCentre,tankSideDir,0.15);
-      const extCapEndBack=wallPoint(extensionEndCentre,wallBackDir,0.10);
+      // overhang.  The START edge is taken directly from the authored L-shape
+      // coping offset path at this exact spillway endpoint.  The end edge is a
+      // pure 300 mm translation of that same edge, guaranteeing a perfectly
+      // shared pool-coping / raised-wall-coping junction with no independent
+      // offset calculation at the corner.
+      const boundaryDistance=(def.name==='a'?range.start:range.end);
+      const extCapStartTank=offsetPointOnClosedPath(boundaryDistance,-0.15);
+      const extCapStartBack=offsetPointOnClosedPath(boundaryDistance,0.10);
+      const extCapEndTank=extCapStartTank.clone().addScaledVector(outward,poolWallExtension);
+      const extCapEndBack=extCapStartBack.clone().addScaledVector(outward,poolWallExtension);
       const extensionCapPlan=[extCapStartTank,extCapEndTank,extCapEndBack,extCapStartBack];
       const extensionCap=this._addFeatureMesh(group,this._createPlanPrismGeometry(extensionCapPlan,0,copingH),copingMat,{x:0,y:0,z:0},null,`infinity-pool-wall-extension-coping-${def.name}`);
       extensionCap.userData.isCoping=true;
@@ -1156,10 +1172,14 @@ export class PoolApp {
 
       // Side coping uses the identical centreline constraint and the same
       // asymmetric 250 mm cross-section: 50 mm into the tank, flush at the back.
+      // Its FAR edge is not estimated from tankRun: it is the exact shared edge
+      // already used to terminate the outer coping above.  Both coping meshes
+      // therefore meet on identical vertices and cannot separate or wedge.
       const nearCapTank=wallPoint(extensionEndCentre,tankSideDir,0.15);
       const nearCapBack=wallPoint(extensionEndCentre,wallBackDir,0.10);
-      const farCapTank=wallPoint(sideFarCentre,tankSideDir,0.15);
-      const farCapBack=wallPoint(sideFarCentre,wallBackDir,0.10);
+      const sharedTankCoping=tankCopingJunctions.get(def.name);
+      const farCapTank=sharedTankCoping?.inner?.clone() || wallPoint(sideFarCentre,tankSideDir,0.15);
+      const farCapBack=sharedTankCoping?.outer?.clone() || wallPoint(sideFarCentre,wallBackDir,0.10);
       const sideCapPlan=[nearCapTank,farCapTank,farCapBack,nearCapBack];
       const cp=this._addFeatureMesh(group,this._createPlanPrismGeometry(sideCapPlan,tankWallTop,tankCopingTop),copingMat,{x:0,y:0,z:0},null,`infinity-catch-side-coping-${def.name}`);
       cp.userData.isCoping=true;cp.userData.isInfinityTankGroundFixed=true;cp.userData.infinityTankBaseZ=elevation;
