@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-lspill-pool-facing-fascia-v1";
+} from "../scene.js?v=20260807-lspill-solid-inside-v2";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -910,9 +910,15 @@ export class PoolApp {
         if(inward.lengthSq()>1e-10) inward.normalize();
         innerA.addScaledVector(inward,0.0015);
         innerB.addScaledVector(inward,0.0015);
+        // The tank-side structural wall legitimately stops at the tank floor,
+        // but the pool floor can sit deeper than the tank. If the pool-facing
+        // skin also stops at tankFloorZ it leaves a visible cavity inside the
+        // pool. Extend only the pool-facing tiled face to the deeper of the
+        // pool wall base and tank floor so the shell reads as continuous.
+        const poolFacingBottom=Math.min(-depth,tankFloorZ);
         const fasciaPositions=new Float32Array([
-          innerA.x,innerA.y,tankFloorZ,
-          innerB.x,innerB.y,tankFloorZ,
+          innerA.x,innerA.y,poolFacingBottom,
+          innerB.x,innerB.y,poolFacingBottom,
           innerB.x,innerB.y,top,
           innerA.x,innerA.y,top
         ]);
@@ -920,8 +926,8 @@ export class PoolApp {
         const alongX=Math.abs(innerB.x-innerA.x)>=Math.abs(innerB.y-innerA.y);
         const uFor=(pt)=> (alongX?pt.x:pt.y)/tile;
         const fasciaUvs=new Float32Array([
-          uFor(innerA),tankFloorZ/tile,
-          uFor(innerB),tankFloorZ/tile,
+          uFor(innerA),poolFacingBottom/tile,
+          uFor(innerB),poolFacingBottom/tile,
           uFor(innerB),top/tile,
           uFor(innerA),top/tile
         ]);
@@ -935,7 +941,7 @@ export class PoolApp {
         const fascia=this._addFeatureMesh(group,fasciaGeometry,wm,{x:0,y:0,z:0},null,'infinity-l-lowered-wall-pool-facing');
         fascia.userData.isWall=true;
         fascia.userData.isInfinityPoolWallExtension=true;
-        fascia.userData.infinityPoolWallBottomFixedZ=tankFloorZ+elevation;
+        fascia.userData.infinityPoolWallBottomFixedZ=poolFacingBottom+elevation;
         fascia.userData.infinityPoolWallBottomVertexIndices=[0,1];
         fascia.renderOrder=Math.max(Number(w.renderOrder)||0,2);
       }
