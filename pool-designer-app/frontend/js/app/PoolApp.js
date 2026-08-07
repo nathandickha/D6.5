@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-lspill-coping-overhang-v1";
+} from "../scene.js?v=20260807-lspill-tile-material-v1";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -875,13 +875,13 @@ export class PoolApp {
       if(pc.p0.distanceTo(pc.p1)<0.01)continue;
       const wallPlan=splitPiecePlan(pc,-wallT*0.5,wallT*0.5);
       const top=pc.selected?loweredTop:0;
-      // The split L-shape infinity wall is rebuilt from an extruded plan prism.
-      // Depending on the selected perimeter direction, the pool-facing tiled
-      // fascia can become the material's back face. Use a dedicated material
-      // instance for the selected infinity section and render both sides so
-      // the tile remains visible from inside the pool and from the tank side.
-      const wm=pc.selected ? tileMat.clone() : tileMat;
-      if(pc.selected){
+      // All L-shape replacement walls must use the exact same live material
+      // instance as the authored pool shell. A clone can lose custom shader/PBR
+      // state (caustics, colour transforms, program hooks) and render the
+      // infinity section a different shade. Make the shared material double-sided
+      // instead so the selected wall remains visible from both pool and tank sides.
+      const wm=tileMat;
+      if(wm.side!==THREE.DoubleSide){
         wm.side=THREE.DoubleSide;
         wm.needsUpdate=true;
       }
