@@ -7,7 +7,7 @@ import {
   updateGrassForPool,
   purgeDetachedSpaChannelArtifacts,
   getPoolPavingContours
-} from "../scene.js?v=20260807-lshape-coping-junction-v3";
+} from "../scene.js?v=20260807-lshape-coping-junction-v4";
 
 import { createPoolGroup, previewUpdateDepths } from "../pool/pool.js";
 import { createPoolWater } from "../pool/water.js";
@@ -945,7 +945,9 @@ export class PoolApp {
       // is the exact shared miter edge already used by the outer coping.
       // This moves the outer corner the full 250 mm across the coping width
       // instead of leaving it aligned with the inner coping edge.
-      const tankSideDir=tangent.clone().multiplyScalar(-def.sign);
+      // Reuse the tank-side direction already calculated for the 300 mm
+      // extension coping above. Redeclaring it here caused PoolApp.js to fail
+      // during module evaluation in browsers.
       const nearCapTank=extensionEnd.clone().addScaledVector(tankSideDir,0.05);
       const nearCapBack=extensionEnd.clone().add(shift);
       const farCapTank=copingInnerJoined[i].clone();
